@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Cardiovascular Digital Twin POC
 
 An educational, simulated monitoring workflow. This prototype flags persistent changes from an individual's own baseline for further attention; it does not diagnose, estimate medical-event risk, or replace clinical care.
@@ -39,3 +40,6 @@ Use `http://127.0.0.1:8000` for a desktop/browser client or your computer's LAN 
 ## Safety and data
 
 All readings are simulated. Three consecutive hourly flagged summaries are required for an alert, independently of the classifier score threshold. No real wearable, hospital, or emergency-service integration is included. Do not use this POC for care decisions.
+=======
+# DigitalTwinChallenge
+>>>>>>> origin/main
