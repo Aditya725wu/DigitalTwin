@@ -41,7 +41,7 @@ Use `http://127.0.0.1:8000` for a desktop/browser client or your computer's LAN 
 
 All readings are simulated. Three consecutive hourly flagged summaries are required for an alert, independently of the classifier score threshold. No real wearable, hospital, or emergency-service integration is included. Do not use this POC for care decisions.
 =======
-# DigitalTwinChallenge
+# DigitalTwinChallenge 2,3
 >>>>>>> origin/main
 
 Hello
