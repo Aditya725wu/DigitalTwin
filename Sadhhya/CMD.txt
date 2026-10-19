@@ -1,0 +1,3 @@
+ ..\.venv\Scripts\python.exe generate_dataset.py
+..\.venv\Scripts\python.exe train_model.py
+..\.venv\Scripts\python.exe demo_alerts.py
