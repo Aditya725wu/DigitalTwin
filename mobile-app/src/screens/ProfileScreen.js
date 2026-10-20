@@ -6,7 +6,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { Card, Title, Paragraph, Button, List, Switch, Divider } from 'react-native-paper';
-import { User, Settings, Bell, Shield, Moon, HelpCircle, LogOut } from 'lucide-react-native';
+import { User, Settings } from 'lucide-react-native';
 
 const ProfileScreen = () => {
   const [notifications, setNotifications] = useState(true);
@@ -18,7 +18,7 @@ const ProfileScreen = () => {
     email: 'john.doe@email.com',
     age: 45,
     gender: 'Male',
-    diabetesType: 'Type 2',
+    cardiacProfile: 'Cardiovascular monitoring',
     diagnosisDate: '2020-05-15',
     bmi: 27.5,
   };
@@ -35,7 +35,7 @@ const ProfileScreen = () => {
           <Paragraph style={styles.email}>{patient.email}</Paragraph>
           <View style={styles.badgeContainer}>
             <View style={styles.badge}>
-              <Text style={styles.badgeText}>Type 2 Diabetes</Text>
+              <Text style={styles.badgeText}>Cardiovascular monitoring</Text>
             </View>
           </View>
         </Card.Content>
@@ -70,8 +70,8 @@ const ProfileScreen = () => {
           />
           <Divider />
           <List.Item
-            title="Diabetes Type"
-            description={patient.diabetesType}
+            title="Cardiac profile"
+            description={patient.cardiacProfile}
             left={props => <List.Icon {...props} icon="medical-bag" />}
           />
         </Card.Content>
@@ -96,7 +96,7 @@ const ProfileScreen = () => {
           <Divider />
           <List.Item
             title="Predictive Alerts"
-            description="Get predictions before glucose spikes"
+            description="Get proactive cardiac alerts"
             left={props => <List.Icon {...props} icon="bell-alert" />}
             right={() => (
               <Switch value={alertsEnabled} onValueChange={setAlertsEnabled} color="#0066cc" />
@@ -149,7 +149,7 @@ const ProfileScreen = () => {
         Sign Out
       </Button>
 
-      <Text style={styles.version}>DiabetesTwin v1.0.0</Text>
+      <Text style={styles.version}>CardioTwin v1.0.0</Text>
     </ScrollView>
   );
 };

@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { Toaster } from "react-hot-toast";
+import { ToastProvider } from "@/components/ToastProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "DiabetesTwin - Digital Twin Dashboard",
-  description: "AI-powered diabetes management and monitoring platform",
+  title: "CardioTwin - Cardiac Digital Twin Dashboard",
+  description: "AI-powered cardiovascular disease prediction and monitoring platform",
 };
 
 export default function RootLayout({
@@ -16,7 +16,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="bg-gray-50">
         {children}
-        <Toaster position="top-right" />
+        <ToastProvider />
       </body>
     </html>
   );

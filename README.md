@@ -1,229 +1,170 @@
-# DiabetesTwin - Digital Twin for Type 2 Diabetes Management
+# CardioTwin
 
-## Team Details
-**Team Name:** [Your Team Name]  
-**College/Institution:** [Your College Name]  
-**Team Members:**
-- [Member 1 Name] - Team Leader
-- [Member 2 Name]
-- [Member 3 Name]
-- [Member 4 Name]
+CardioTwin is a cardiovascular Digital Twin proof-of-concept for the Happiest Health Digital Twin Challenge 2026. It combines a synthetic electronic health record (EHR) with simulated wearable telemetry to help a clinician review cardiac risk, vital-sign trends, and alerts before an adverse event occurs.
 
-## Project Title
-**DiabetesTwin: AI-Powered Digital Twin for Proactive Type 2 Diabetes Management**
+> **Prototype notice:** This project uses synthetic demo patients and simplified risk heuristics. It is not a medical device and must not be used for clinical decisions.
 
-## Problem Statement and Healthcare Use Case
+## Challenge alignment
 
-Type 2 Diabetes affects over 77 million Indians, making it one of the most prevalent chronic conditions in the country. Traditional diabetes management is reactive - patients only take action after symptoms appear or during routine checkups. This leads to:
+The prototype demonstrates the required two-stream fusion:
 
-- **Undetected glucose spikes** causing long-term complications
-- **Poor medication adherence** due to lack of real-time feedback
-- **Emergency hospitalizations** from preventable events
-- **Reduced quality of life** from inadequate monitoring
+1. **Static / historical EHR** — age, sex, BMI, smoking, diabetes, hypertension, family history, and cholesterol values.
+2. **Dynamic wearable stream** — heart rate, blood pressure, oxygen saturation, ECG rhythm, timestamp, and source.
+3. **Digital-twin output** — cardiac-event probability, risk classification, arrhythmia signal, blood-pressure trend, recommendations, and alerts.
+4. **Clinical UI** — a responsive doctor dashboard plus a patient-facing Expo mobile app.
 
-### Our Solution: DiabetesTwin
+## What works
 
-DiabetesTwin creates a dynamic, virtual replica of a diabetic patient that continuously monitors their health status and **predicts adverse events 2-4 hours in advance**. By fusing:
+- FastAPI backend with seeded synthetic cardiac patients
+- Cardiac prediction endpoint with risk classification
+- Arrhythmia and blood-pressure checks
+- Alert generation and acknowledgement
+- WebSocket endpoint for patient telemetry
+- Next.js doctor dashboard with live API data, charts, risk mix, prediction watchlist, and alert queue
+- Expo mobile app screens for cardiac status, telemetry, alerts, and profile
+- Swagger / OpenAPI documentation at `/docs`
 
-1. **Static Electronic Health Records (EHR)**: Demographics, medical history, lab results, genetic markers, medication history
-2. **Real-time Wearable Data**: Continuous glucose monitoring (CGM), heart rate variability, sleep patterns, physical activity, stress levels
+## Repository layout
 
-Our Digital Twin can:
-- ✅ **Predict glucose spikes** 2 hours before they occur
-- ✅ **Alert patients** to take preventive action (medication, food intake, exercise)
-- ✅ **Provide personalized recommendations** based on individual physiology
-- ✅ **Enable doctors** to monitor patients remotely with intelligent dashboards
-- ✅ **Reduce hospitalizations** through proactive intervention
-
-## Technical Stack
-
-### Backend
-- **Language:** Python 3.10+
-- **Framework:** FastAPI
-- **ML/AI:** 
-  - Scikit-learn (Random Forest, XGBoost)
-  - TensorFlow/Keras (LSTM for time-series)
-  - Prophet (Facebook's forecasting library)
-- **Data Processing:** Pandas, NumPy, SciPy
-- **Real-time:** WebSockets for live data streaming
-- **Database:** PostgreSQL + TimescaleDB (time-series data)
-
-### Frontend - Web Dashboard
-- **Framework:** Next.js 14 (App Router)
-- **Language:** TypeScript
-- **UI Library:** Tailwind CSS, shadcn/ui
-- **Charts:** Recharts, Apache ECharts
-- **Real-time:** Socket.io client
-- **State Management:** Zustand
-
-### Mobile App
-- **Framework:** React Native (Expo)
-- **Language:** TypeScript
-- **UI:** React Native Paper
-- **Charts:** Victory Native
-- **Real-time:** Socket.io client
-
-### Data & Models
-- **Synthetic Data Generation:** Synthea, Faker, SDV (Synthetic Data Vault)
-- **Open Datasets:** 
-  - MIMIC-IV (anonymized clinical data)
-  - OhioT1DM Dataset (continuous glucose monitoring)
-  - Apple HealthKit synthetic samples
-
-## AI/ML Model Details
-
-### 1. Glucose Spike Prediction Model (Primary)
-- **Type:** Gradient Boosting (XGBoost) + LSTM Ensemble
-- **Input Features:** 
-  - Time-series: CGM readings (last 6 hours), heart rate, activity level
-  - Static: Age, BMI, HbA1c, medication type
-- **Output:** Probability of glucose spike in next 2 hours + predicted glucose level
-- **Performance:** 87% accuracy, 0.82 F1-score (on synthetic validation set)
-
-### 2. Cardiovascular Risk Model (Secondary)
-- **Type:** Random Forest Classifier
-- **Input:** Sleep quality, resting heart rate, blood pressure, glucose variability
-- **Output:** Risk score (0-100) for cardiovascular events
-
-### 3. Medication Adherence Predictor
-- **Type:** Logistic Regression
-- **Input:** Previous adherence patterns, glucose control, lifestyle factors
-- **Output:** Likelihood of medication skip in next 24 hours
-
-## Architecture Diagram
-
-See `docs/architecture.pdf` for detailed system architecture.
-
-**High-level Flow:**
-```
-[Wearable Devices] → [Mobile App] → [Backend API] 
-                                         ↓
-                                   [ML Engine]
-                                         ↓
-                              [Prediction + Alerts]
-                                    ↙        ↘
-                        [Patient App]    [Doctor Dashboard]
+```text
+backend/
+  main.py                    FastAPI app and in-memory demo state
+  heart_disease_models.py    Optional synthetic model-training utilities
+  generate_cardiac_data.py  Synthetic EHR and wearable data generator
+  config.py                  Environment and threshold configuration
+  requirements.txt           Python dependencies
+web-dashboard/               Next.js doctor dashboard
+mobile-app/                  React Native / Expo patient app
+docs/                        API, deployment, and submission notes
+START.bat                    Windows convenience launcher
+.env.example                Local environment template
+LICENSE                      MIT license
 ```
 
-## Video Demonstration
-
-🎥 **Project Demo Video:** [YouTube Link - 20+ minutes]
-
-The video covers:
-1. System architecture walkthrough
-2. Data pipeline demonstration
-3. ML model training and evaluation
-4. Live prediction demo
-5. Patient mobile app tour
-6. Doctor dashboard features
-7. Alert system in action
-
-## Open Source License
-
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
-
-## Installation & Setup
+## Quick start
 
 ### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- PostgreSQL 14+
-- Expo CLI (for mobile app)
 
-### Backend Setup
-```bash
-cd backend
+- Python 3.10 or newer
+- Node.js 18 or newer and npm
+- Optional: Expo Go for the mobile app
+
+### Windows
+
+Run the following from the repository root (`D:\Digital Twin`):
+
+```bat
+cd /d "D:\Digital Twin\backend"
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+call venv\Scripts\activate.bat
 pip install -r requirements.txt
-python generate_synthetic_data.py
-python train_models.py
-uvicorn main:app --reload
+
+cd /d "D:\Digital Twin\web-dashboard"
+npm install
 ```
 
-### Web Dashboard Setup
+Then start two terminals.
+
+**Terminal 1 — backend**
+
+```bat
+cd /d "D:\Digital Twin\backend"
+call venv\Scripts\activate.bat
+uvicorn main:app --reload --port 8000
+```
+
+**Terminal 2 — web dashboard**
+
+```bat
+cd /d "D:\Digital Twin\web-dashboard"
+npm run dev
+```
+
+Open:
+
+- Dashboard: http://localhost:3000/dashboard
+- API docs: http://localhost:8000/docs
+- Health check: http://localhost:8000/health
+
+Alternatively, after installing dependencies, double-click `START.bat`.
+
+### macOS / Linux
+
 ```bash
-cd web-dashboard
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Terminal 1
+uvicorn main:app --reload --port 8000
+
+# Terminal 2
+cd ../web-dashboard
 npm install
 npm run dev
 ```
 
-### Mobile App Setup
+### Mobile app
+
 ```bash
 cd mobile-app
 npm install
 npx expo start
 ```
 
-## Features
+For a physical phone, set `EXPO_PUBLIC_API_URL` to the host computer's LAN IP, for example `http://192.168.1.20:8000`, and ensure the phone and computer are on the same network.
 
-### Patient Mobile App
-- 📊 Real-time glucose monitoring
-- 🔔 Predictive alerts (2 hours advance warning)
-- 💊 Medication reminders
-- 🍽️ Food logging with carb tracking
-- 🏃 Activity tracking integration
-- 📈 Personal health trends
-- 🎯 Daily health score
+## Demo flow for judges
 
-### Doctor Dashboard
-- 👥 Multi-patient monitoring
-- 🎯 Risk stratification (high/medium/low risk patients)
-- 📊 Interactive patient Digital Twin visualization
-- 🔔 Real-time alert feed
-- 📈 Historical trend analysis
-- 💬 In-app patient communication
-- 📋 Clinical notes and recommendations
+1. Start the backend and dashboard.
+2. Open the dashboard and show the four seeded patients.
+3. Point out the static EHR risk factors on the patient roster.
+4. Show live wearable vitals and the heart-rate / blood-pressure chart.
+5. Open the prediction watchlist and compare LOW, MODERATE, HIGH, and CRITICAL profiles.
+6. Open the alert queue and acknowledge one alert.
+7. Submit a new vital reading through Swagger: `POST /api/patients/{patient_id}/vitals`.
+8. Refresh the dashboard and show the new telemetry / alert state.
+9. Open the mobile app to show the patient-facing view.
 
-## Data Privacy & Security
+Example vital payload:
 
-- ✅ **No real patient data** - 100% synthetic datasets
-- ✅ **End-to-end encryption** for data transmission
-- ✅ **JWT-based authentication**
-- ✅ **RBAC** (Role-Based Access Control)
-- ✅ **HIPAA-compliant** architecture (ready for real deployment)
-- ✅ **Data anonymization** pipelines
-
-## Future Enhancements
-
-1. **Multi-condition support** (Hypertension, Cardiovascular disease)
-2. **Federated learning** for model improvement without data sharing
-3. **Integration with hospital EHR systems** (HL7 FHIR)
-4. **Voice-based interaction** for elderly patients
-5. **Telemedicine integration**
-6. **Genetic marker incorporation** for personalized medicine
-
-## Project Structure
-
-```
-digital-twin/
-├── backend/               # FastAPI backend
-│   ├── api/              # API routes
-│   ├── ml_models/        # ML model training & inference
-│   ├── data_generation/  # Synthetic data generation
-│   ├── database/         # Database models
-│   └── utils/            # Utilities
-├── web-dashboard/        # Next.js doctor dashboard
-│   ├── app/             # Next.js app directory
-│   ├── components/      # React components
-│   └── lib/             # Utilities
-├── mobile-app/          # React Native patient app
-│   ├── src/
-│   │   ├── screens/    # App screens
-│   │   ├── components/ # Reusable components
-│   │   └── services/   # API services
-├── docs/               # Documentation & diagrams
-├── models/             # Trained model files
-└── data/               # Synthetic datasets
+```json
+{
+  "heart_rate_bpm": 128,
+  "blood_pressure_systolic": 182,
+  "blood_pressure_diastolic": 118,
+  "oxygen_saturation": 92,
+  "ecg_rhythm": "Tachycardia",
+  "ecg_quality": "GOOD",
+  "source": "wearable"
+}
 ```
 
-## Contact
+## Verification
 
-**Team Leader:** [Name]  
-**Email:** [email]  
-**Phone:** [phone]  
-**GitHub:** [This repository link]
+```bash
+# Backend syntax
+python -m py_compile backend/main.py backend/heart_disease_models.py backend/generate_cardiac_data.py
 
----
+# Web production build
+cd web-dashboard
+npm run build
+```
 
-Built with ❤️ for Happiest Health Digital Twin Challenge 2026
+The backend stores demo state in memory, so seeded patients and newly submitted readings reset when the API process restarts.
+
+## Documentation
+
+- [Setup guide](SETUP.md)
+- [API reference](docs/api-reference.md)
+- [Deployment notes](docs/deployment.md)
+- [Hackathon submission checklist](docs/hackathon-submission.md)
+
+## Team and submission placeholders
+
+Before submitting, replace the placeholders in `docs/hackathon-submission.md` with the team name, college/incubator, team members, demo-video link, architecture PDF/PPT link, and presentation link.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

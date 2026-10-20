@@ -1,160 +1,38 @@
-# Digital Twin Challenge 2026 - Deployment Guide
+# CardioTwin deployment notes
 
-## Quick Start
+## Local demo
 
-### 1. Backend (FastAPI)
-```bash
-cd backend
+Use the commands in [SETUP.md](../SETUP.md). The recommended demo deployment is two processes:
 
-# Create virtual environment
-python -m venv venv
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Linux/Mac
+- FastAPI on port 8000
+- Next.js on port 3000
 
-# Install dependencies
-pip install -r requirements.txt
+## Frontend hosting
 
-# Generate synthetic data
-python generate_synthetic_data.py
+Build the dashboard with:
 
-# Train ML models
-python train_models.py
-
-# Start server
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### 2. Web Dashboard (Next.js)
 ```bash
 cd web-dashboard
-
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-# Access at http://localhost:3000
+npm run build
+npm run start
 ```
 
-### 3. Mobile App (React Native/Expo)
-```bash
-cd mobile-app
+Set `NEXT_PUBLIC_API_URL` to a reachable HTTPS backend URL.
 
-# Install dependencies
-npm install
+## Backend hosting
 
-# Start Expo
-npx expo start
+Run the API behind a production process manager / reverse proxy:
 
-# Run on Android
-npx expo run:android
-
-# Run on iOS
-npx expo run:ios
-```
-
-## Environment Variables
-
-### Backend (.env)
-```
-DATABASE_URL=postgresql://user:password@localhost:5432/digitaltwin
-REDIS_URL=redis://localhost:6379
-SECRET_KEY=your-secret-key
-```
-
-### Web Dashboard (.env.local)
-```
-NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_WS_URL=ws://localhost:8000
-```
-
-### Mobile App (.env)
-```
-EXPO_PUBLIC_API_URL=http://your-server-ip:8000
-```
-
-## Docker Deployment
-
-### Backend
 ```bash
 cd backend
-docker build -t diabetestwin-api .
-docker run -p 8000:8000 diabetestwin-api
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-### With Docker Compose
-```bash
-docker-compose up --build
-```
+Set `ALLOWED_ORIGINS` to the exact dashboard and mobile origins. Use HTTPS in any non-local environment.
 
-## Production Deployment
+## Important prototype limitations
 
-### Backend
-- Use Gunicorn with multiple workers
-- Enable HTTPS
-- Configure PostgreSQL
-- Set up Redis for caching
-
-### Frontend
-- Build for production: `npm run build`
-- Deploy to Vercel/Netlify
-- Configure environment variables
-
-### Mobile App
-- Build with EAS Build
-- Publish to App Store/Play Store
-
-## API Documentation
-
-Once the backend is running:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-- Health Check: http://localhost:8000/health
-
-## Testing
-
-### Backend Tests
-```bash
-cd backend
-pytest tests/
-```
-
-### Frontend Tests
-```bash
-cd web-dashboard
-npm test
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Port already in use**
-   ```bash
-   # Find process using port 8000
-   netstat -ano | findstr :8000
-   # Kill process
-   taskkill /PID <PID> /F
-   ```
-
-2. **Module not found**
-   ```bash
-   # Reinstall dependencies
-   pip install -r requirements.txt
-   ```
-
-3. **Database connection issues**
-   - Check PostgreSQL is running
-   - Verify DATABASE_URL
-   - Run migrations
-
-## Monitoring
-
-### Health Check
-```bash
-curl http://localhost:8000/health
-```
-
-### Metrics
-- API endpoint: `/api/statistics`
-- WebSocket: `/ws/patient/{patient_id}`
+- Storage is in memory; restart resets the demo state.
+- Patient data is synthetic and seeded in `backend/main.py`.
+- Risk scoring is a simplified heuristic for demonstration, not a validated clinical model.
+- Authentication, authorization, audit logging, and production database persistence are not implemented in this PoC.

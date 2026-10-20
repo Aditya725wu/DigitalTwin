@@ -17,6 +17,14 @@ export default function PatientsPage() {
     bmi: '',
   });
 
+  React.useEffect(() => {
+    patientAPI.listPatients()
+      .then((res) => {
+        if (res.data) setPatients(res.data);
+      })
+      .catch((err) => console.error('Failed to load patients:', err));
+  }, [setPatients]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -62,7 +70,7 @@ export default function PatientsPage() {
                   patient.risk_level === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
                   'bg-green-100 text-green-800'
                 }`}>
-                  {patient.risk_level}
+                  {patient.risk_level || 'LOW'}
                 </span>
                 <button className="text-blue-600 hover:text-blue-800 font-medium">
                   View Details

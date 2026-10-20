@@ -7,7 +7,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 
 // Import screens
 import HomeScreen from './src/screens/HomeScreen';
-import GlucoseScreen from './src/screens/GlucoseScreen';
+import CardiacScreen from './src/screens/CardiacScreen';
 import AlertsScreen from './src/screens/AlertsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 
@@ -25,8 +25,8 @@ export default function App() {
 
                 if (route.name === 'Home') {
                   iconName = focused ? 'home' : 'home-outline';
-                } else if (route.name === 'Glucose') {
-                  iconName = focused ? 'chart-line' : 'chart-line';
+                } else if (route.name === 'Cardiac') {
+                  iconName = focused ? 'heart-pulse' : 'heart-outline';
                 } else if (route.name === 'Alerts') {
                   iconName = focused ? 'bell' : 'bell-outline';
                 } else if (route.name === 'Profile') {
@@ -45,7 +45,7 @@ export default function App() {
             })}
           >
             <Tab.Screen name="Home" component={HomeScreen} />
-            <Tab.Screen name="Glucose" component={GlucoseScreen} />
+            <Tab.Screen name="Cardiac" component={CardiacScreen} />
             <Tab.Screen name="Alerts" component={AlertsScreen} />
             <Tab.Screen name="Profile" component={ProfileScreen} />
           </Tab.Navigator>

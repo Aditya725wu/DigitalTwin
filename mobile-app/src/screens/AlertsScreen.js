@@ -23,30 +23,8 @@ const AlertsScreen = () => {
       const response = await apiClient.get('/api/alerts');
       setAlerts(response.data);
     } catch (error) {
-      // Mock data for demo
-      setAlerts([
-        {
-          alert_id: '1',
-          severity: 'HIGH',
-          message: 'Glucose spike predicted in the next 2 hours',
-          timestamp: new Date().toISOString(),
-          acknowledged: false,
-        },
-        {
-          alert_id: '2',
-          severity: 'MEDIUM',
-          message: 'Missed medication dose detected',
-          timestamp: new Date(Date.now() - 3600000).toISOString(),
-          acknowledged: false,
-        },
-        {
-          alert_id: '3',
-          severity: 'LOW',
-          message: 'Daily summary: Glucose levels within target range',
-          timestamp: new Date(Date.now() - 7200000).toISOString(),
-          acknowledged: true,
-        },
-      ]);
+      setAlerts([]);
+      console.error(error);
     }
   };
 

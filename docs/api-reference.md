@@ -1,231 +1,112 @@
-# DiabetesTwin API Reference
+# CardioTwin API reference
 
-## Base URL
-```
-http://localhost:8000
-```
+Base URL: `http://localhost:8000`
 
-## Authentication
-Currently uses simple API key in headers (for demo purposes).
-```http
-Authorization: Bearer YOUR_API_KEY
-```
+All examples use synthetic demo data.
 
-## Endpoints
+## Health
 
-### Health Check
+### `GET /health`
 
-#### GET /health
-Check API health status.
+Returns service and heuristic-model availability.
 
-**Response:**
+## Patients
+
+### `GET /api/patients`
+
+Returns the current synthetic patient roster.
+
+### `GET /api/patients/{patient_id}`
+
+Returns one patient EHR profile.
+
+### `POST /api/patients`
+
+Registers a patient. Required fields:
+
 ```json
 {
-  "status": "healthy",
-  "timestamp": "2026-10-19T12:00:00Z",
-  "models_loaded": {
-    "glucose_spike": true,
-    "cv_risk": true
-  }
+  "name": "Asha Rao",
+  "age": 52,
+  "gender": "F",
+  "email": "asha@example.com",
+  "phone": "+91-9000000000",
+  "bmi": 26.4,
+  "hypertension": true,
+  "diabetes": false,
+  "smoker": false,
+  "family_history_cvd": true,
+  "total_cholesterol": 220,
+  "hdl_cholesterol": 45,
+  "ldl_cholesterol": 140
 }
 ```
 
----
+## Wearable vitals
 
-### Patients
+### `POST /api/patients/{patient_id}/vitals`
 
-#### POST /api/patients
-Register a new patient.
-
-**Request Body:**
 ```json
 {
-  "name": "John Doe",
-  "age": 45,
-  "gender": "M",
-  "email": "john@example.com",
-  "phone": "+1234567890",
-  "bmi": 27.5,
-  "medical_history": ["hypertension"]
-}
-```
-
-**Response:**
-```json
-{
-  "patient_id": "PAT001",
-  "name": "John Doe",
-  "age": 45,
-  "gender": "M",
-  "email": "john@example.com",
-  "created_at": "2026-10-19T12:00:00Z"
-}
-```
-
-#### GET /api/patients
-List all patients.
-
-**Response:**
-```json
-[
-  {
-    "patient_id": "PAT001",
-    "name": "John Doe",
-    "age": 45,
-    "gender": "M"
-  }
-]
-```
-
-#### GET /api/patients/{patient_id}
-Get patient details.
-
----
-
-### Sensor Data
-
-#### POST /api/patients/{patient_id}/readings
-Submit sensor readings.
-
-**Request Body:**
-```json
-{
-  "glucose_mg_dl": 145.5,
-  "heart_rate_bpm": 72,
-  "steps": 5000,
-  "timestamp": "2026-10-19T12:00:00Z",
+  "heart_rate_bpm": 78,
+  "blood_pressure_systolic": 128,
+  "blood_pressure_diastolic": 82,
+  "oxygen_saturation": 97,
+  "ecg_rhythm": "Normal sinus rhythm",
+  "ecg_quality": "GOOD",
   "source": "wearable"
 }
 ```
 
----
+### `GET /api/patients/{patient_id}/vitals?limit=100`
 
-### Predictions
+Returns recent wearable readings.
 
-#### POST /api/patients/{patient_id}/predict
-Get health predictions.
+### `GET /api/patients/{patient_id}/vitals/latest`
 
-**Request Body:**
-```json
-[
-  {
-    "glucose_mg_dl": 145.5,
-    "heart_rate_bpm": 72,
-    "timestamp": "2026-10-19T12:00:00Z",
-    "source": "wearable"
-  }
-]
-```
+Returns the latest reading.
 
-**Response:**
-```json
-{
-  "patient_id": "PAT001",
-  "spike_probability": 0.75,
-  "risk_level": "HIGH",
-  "recommended_actions": [
-    "Take prescribed medication",
-    "Increase water intake",
-    "Moderate physical activity"
-  ],
-  "timestamp": "2026-10-19T12:00:00Z"
-}
-```
+## Predictions
 
----
+### `POST /api/patients/{patient_id}/predict/cardiac`
 
-### Alerts
+Combines the patient EHR with stored vitals and returns:
 
-#### GET /api/patients/{patient_id}/alerts
-Get patient alerts.
+- `cardiac_event_probability`
+- `risk_classification` (`LOW`, `MODERATE`, `HIGH`, `CRITICAL`)
+- `arrhythmia_risk`
+- `blood_pressure_trend`
+- `bp_risk_level`
+- `recommended_actions`
 
-**Query Parameters:**
-- `limit` (optional): Number of alerts to return (default: 10)
+## Alerts
 
-**Response:**
-```json
-[
-  {
-    "alert_id": "ALR001",
-    "patient_id": "PAT001",
-    "severity": "HIGH",
-    "message": "Predicted glucose spike in 2 hours",
-    "timestamp": "2026-10-19T12:00:00Z",
-    "acknowledged": false
-  }
-]
-```
+### `GET /api/alerts`
 
-#### POST /api/alerts/{alert_id}/acknowledge
-Acknowledge an alert.
+Returns recent alerts. Optional query parameters: `severity`, `limit`.
 
-**Response:**
-```json
-{
-  "alert_id": "ALR001",
-  "acknowledged": true,
-  "acknowledged_at": "2026-10-19T12:05:00Z"
-}
-```
+### `GET /api/patients/{patient_id}/alerts`
 
----
+Returns alerts for one patient.
 
-### Statistics
+### `POST /api/alerts/{alert_id}/acknowledge`
 
-#### GET /api/statistics
-Get system statistics.
+Marks an alert as acknowledged.
 
-**Response:**
-```json
-{
-  "total_patients": 100,
-  "total_alerts": 250,
-  "high_risk_alerts": 15,
-  "timestamp": "2026-10-19T12:00:00Z"
-}
-```
+## Analytics
 
----
+### `GET /api/statistics`
 
-### WebSocket
+Returns patient count, alert count, risk counts, unacknowledged alerts, and average heart rate.
 
-#### WS /ws/patient/{patient_id}
-Real-time patient data streaming.
+## Real-time stream
 
-**Client Send:**
-```json
-{
-  "type": "subscribe"
-}
-```
+### `WS /ws/patient/{patient_id}`
 
-**Server Send (Prediction):**
-```json
-{
-  "type": "prediction",
-  "spike_probability": 0.75,
-  "timestamp": "2026-10-19T12:00:00Z"
-}
-```
+Send `{"type":"subscribe"}` to subscribe. Send `{"type":"vitals","data":{...}}` to ingest a vital reading and receive alert / prediction updates.
 
----
-
-## Error Responses
-
-All errors follow this format:
+## Error format
 
 ```json
-{
-  "detail": "Error message description"
-}
+{"detail":"Patient not found"}
 ```
-
-### Status Codes
-- `200` - Success
-- `201` - Created
-- `400` - Bad Request
-- `401` - Unauthorized
-- `404` - Not Found
-- `422` - Validation Error
-- `500` - Internal Server Error
-- `503` - Service Unavailable

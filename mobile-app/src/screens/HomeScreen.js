@@ -1,309 +1,88 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  RefreshControl,
-} from 'react-native';
-import { Card, Title, Paragraph, Button, ProgressBar } from 'react-native-paper';
-import { Heart, AlertCircle, TrendingUp, Shield } from 'lucide-react-native';
-import apiClient from '../services/api';
+import React, { useCallback, useEffect, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Card, Paragraph, ProgressBar, Title } from 'react-native-paper';
+import { Activity, HeartPulse, ShieldAlert, Wind } from 'lucide-react-native';
+import { patientAPI, predictionAPI, sensorAPI } from '../services/api';
 
-const HomeScreen = () => {
-  const [glucose, setGlucose] = useState(145);
-  const [glucoseStatus, setGlucoseStatus] = useState('Normal');
-  const [riskScore, setRiskScore] = useState(0.65);
+const PATIENT_ID = 'PAT000001';
+
+export default function HomeScreen() {
+  const [patient, setPatient] = useState(null);
+  const [vitals, setVitals] = useState(null);
+  const [prediction, setPrediction] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [lastSync, setLastSync] = useState(new Date());
+  const [error, setError] = useState('');
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    // Fetch latest data
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setRefreshing(false);
-    setLastSync(new Date());
-  };
-
-  useEffect(() => {
-    loadInitialData();
+  const loadData = useCallback(async () => {
+    try {
+      setError('');
+      const [patientResult, vitalsResult, predictionResult] = await Promise.all([
+        patientAPI.getPatient(PATIENT_ID),
+        sensorAPI.getVitals(PATIENT_ID, 1),
+        predictionAPI.predictCardiac(PATIENT_ID),
+      ]);
+      setPatient(patientResult.data);
+      setVitals(vitalsResult.data?.[0] || null);
+      setPrediction(predictionResult.data);
+    } catch (loadError) {
+      setError('Connect the backend to load the latest cardiac twin.');
+      console.error(loadError);
+    }
   }, []);
 
-  const loadInitialData = async () => {
-    try {
-      // Fetch patient data
-      const response = await apiClient.get('/api/patients/current');
-      if (response.data) {
-        setGlucose(response.data.last_glucose || 145);
-        setRiskScore(response.data.risk_score || 0.65);
-      }
-    } catch (error) {
-      console.error('Error loading data:', error);
-    }
-  };
+  useEffect(() => { void loadData(); }, [loadData]);
 
-  const getGlucoseStatus = (value) => {
-    if (value < 70) return 'Low';
-    if (value > 180) return 'High';
-    return 'Normal';
-  };
-
-  const getRiskLevel = (score) => {
-    if (score > 0.8) return 'High';
-    if (score > 0.5) return 'Medium';
-    return 'Low';
-  };
-
-  const statusColor = glucoseStatus === 'Normal' ? '#2ed573' : glucoseStatus === 'High' ? '#ff4757' : '#ffa502';
-  const riskLevel = getRiskLevel(riskScore);
-  const riskColor = riskLevel === 'High' ? '#ff4757' : riskLevel === 'Medium' ? '#ffa502' : '#2ed573';
+  const refresh = async () => { setRefreshing(true); await loadData(); setRefreshing(false); };
+  const risk = prediction?.risk_classification || patient?.risk_level || 'LOW';
+  const probability = prediction?.cardiac_event_probability || 0;
+  const riskColor = risk === 'CRITICAL' ? '#d32f2f' : risk === 'HIGH' ? '#ef6c00' : risk === 'MODERATE' ? '#f9a825' : '#2e7d32';
 
   return (
-    <ScrollView
-      style={styles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
-      {/* Welcome Card */}
-      <Card style={styles.card}>
-        <Card.Content>
-          <Title style={styles.title}>Welcome Back!</Title>
-          <Paragraph style={styles.subtitle}>
-            Your health is being monitored 24/7
-          </Paragraph>
-          <Text style={styles.lastSync}>
-            Last sync: {lastSync.toLocaleTimeString()}
-          </Text>
-        </Card.Content>
-      </Card>
+    <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
+      <Card style={styles.hero}><Card.Content>
+        <Text style={styles.eyebrow}>CARDIOTWIN PATIENT VIEW</Text>
+        <Title style={styles.title}>{patient?.name || 'Synthetic patient'}</Title>
+        <Paragraph>Personal cardiac status from EHR + wearable telemetry.</Paragraph>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+      </Card.Content></Card>
 
-      {/* Current Status */}
-      <Card style={styles.card}>
-        <Card.Content>
-          <View style={styles.statusHeader}>
-            <Heart size={24} color={statusColor} />
-            <Title style={styles.statusTitle}>Current Glucose</Title>
-          </View>
-          <View style={styles.glucoseDisplay}>
-            <Text style={[styles.glucoseValue, { color: statusColor }]}>{glucose}</Text>
-            <Text style={styles.glucoseUnit}>mg/dL</Text>
-          </View>
-          <Text style={[styles.statusText, { color: statusColor }]}>
-            Status: {glucoseStatus}
-          </Text>
-          <ProgressBar
-            progress={Math.min(glucose / 250, 1)}
-            color={statusColor}
-            style={styles.progressBar}
-          />
-        </Card.Content>
-      </Card>
+      <View style={styles.grid}>
+        <Metric icon={<HeartPulse size={22} color="#0b74de" />} label="Heart rate" value={vitals?.heart_rate_bpm ? `${vitals.heart_rate_bpm} bpm` : '—'} />
+        <Metric icon={<Activity size={22} color="#5e35b1" />} label="Blood pressure" value={vitals?.blood_pressure_systolic ? `${vitals.blood_pressure_systolic}/${vitals.blood_pressure_diastolic}` : '—'} />
+        <Metric icon={<Wind size={22} color="#00897b" />} label="Oxygen" value={vitals?.oxygen_saturation ? `${vitals.oxygen_saturation}%` : '—'} />
+        <Metric icon={<ShieldAlert size={22} color={riskColor} />} label="Twin risk" value={risk} color={riskColor} />
+      </View>
 
-      {/* Risk Assessment */}
-      <Card style={styles.card}>
-        <Card.Content>
-          <View style={styles.statusHeader}>
-            <Shield size={24} color={riskColor} />
-            <Title style={styles.statusTitle}>Risk Assessment</Title>
-          </View>
-          <View style={styles.riskContainer}>
-            <Text style={[styles.riskScore, { color: riskColor }]}>
-              {Math.round(riskScore * 100)}%
-            </Text>
-            <Text style={[styles.riskLevel, { color: riskColor }]}>
-              {riskLevel} Risk
-            </Text>
-          </View>
-          <View style={styles.riskIndicators}>
-            <View style={[styles.riskIndicator, riskLevel === 'Low' && styles.activeRisk]}>
-              <Text style={styles.riskText}>Low</Text>
-            </View>
-            <View style={[styles.riskIndicator, riskLevel === 'Medium' && styles.activeRisk]}>
-              <Text style={styles.riskText}>Medium</Text>
-            </View>
-            <View style={[styles.riskIndicator, riskLevel === 'High' && styles.activeRisk]}>
-              <Text style={styles.riskText}>High</Text>
-            </View>
-          </View>
-        </Card.Content>
-      </Card>
-
-      {/* Quick Actions */}
-      <Card style={styles.card}>
-        <Card.Content>
-          <Title style={styles.actionTitle}>Quick Actions</Title>
-          <View style={styles.actionsRow}>
-            <Button
-              mode="contained"
-              style={styles.actionButton}
-              onPress={() => console.log('Log Glucose')}
-            >
-              Log Glucose
-            </Button>
-            <Button
-              mode="outlined"
-              style={styles.actionButton}
-              onPress={() => console.log('View Trends')}
-            >
-              View Trends
-            </Button>
-          </View>
-          <View style={styles.actionsRow}>
-            <Button
-              mode="outlined"
-              style={styles.actionButton}
-              onPress={() => console.log('Medication')}
-            >
-              Medication
-            </Button>
-            <Button
-              mode="outlined"
-              style={styles.actionButton}
-              onPress={() => console.log('Contact Doctor')}
-            >
-              Contact Doctor
-            </Button>
-          </View>
-        </Card.Content>
-      </Card>
-
-      {/* Prediction Card */}
-      <Card style={styles.card}>
-        <Card.Content>
-          <View style={styles.statusHeader}>
-            <TrendingUp size={24} color="#0066cc" />
-            <Title style={styles.statusTitle}>Prediction</Title>
-          </View>
-          <Paragraph style={styles.predictionText}>
-            Based on your recent data, the next 2 hours are predicted to be:
-          </Paragraph>
-          <Text style={styles.predictionOutcome}>Stable Glucose</Text>
-          <Paragraph style={styles.predictionConfidence}>
-            Confidence: 85%
-          </Paragraph>
-        </Card.Content>
-      </Card>
+      <Card style={styles.card}><Card.Content>
+        <Title style={styles.sectionTitle}>Cardiac event forecast</Title>
+        <Text style={[styles.probability, { color: riskColor }]}>{Math.round(probability * 100)}%</Text>
+        <Text style={styles.muted}>Estimated risk from the current synthetic EHR and recent wearable data.</Text>
+        <ProgressBar progress={Math.min(probability, 1)} color={riskColor} style={styles.progress} />
+        <Text style={styles.rhythm}>Rhythm: {prediction?.arrhythmia_risk || vitals?.ecg_rhythm || 'Awaiting telemetry'}</Text>
+      </Card.Content></Card>
     </ScrollView>
   );
-};
+}
+
+function Metric({ icon, label, value, color = '#172033' }) {
+  return <Card style={styles.metric}><Card.Content><View style={styles.metricIcon}>{icon}</View><Text style={styles.metricLabel}>{label}</Text><Text style={[styles.metricValue, { color }]}>{value}</Text></Card.Content></Card>;
+}
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  card: {
-    margin: 16,
-    elevation: 2,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#0066cc',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 4,
-  },
-  lastSync: {
-    fontSize: 12,
-    color: '#999',
-    marginTop: 8,
-  },
-  statusHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  statusTitle: {
-    marginLeft: 12,
-    fontSize: 18,
-    color: '#333',
-  },
-  glucoseDisplay: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginBottom: 8,
-  },
-  glucoseValue: {
-    fontSize: 48,
-    fontWeight: 'bold',
-  },
-  glucoseUnit: {
-    fontSize: 20,
-    color: '#666',
-    marginLeft: 8,
-  },
-  statusText: {
-    fontSize: 16,
-    marginBottom: 12,
-  },
-  progressBar: {
-    height: 8,
-    borderRadius: 4,
-    marginTop: 8,
-  },
-  riskContainer: {
-    alignItems: 'center',
-    marginVertical: 16,
-  },
-  riskScore: {
-    fontSize: 48,
-    fontWeight: 'bold',
-  },
-  riskLevel: {
-    fontSize: 20,
-    marginTop: 8,
-  },
-  riskIndicators: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 16,
-  },
-  riskIndicator: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#e0e0e0',
-  },
-  activeRisk: {
-    backgroundColor: '#0066cc',
-  },
-  riskText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  actionTitle: {
-    fontSize: 18,
-    marginBottom: 16,
-    color: '#333',
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  actionButton: {
-    flex: 1,
-    marginHorizontal: 4,
-  },
-  predictionText: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 12,
-  },
-  predictionOutcome: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#0066cc',
-    marginBottom: 8,
-  },
-  predictionConfidence: {
-    fontSize: 14,
-    color: '#999',
-  },
+  container: { flex: 1, backgroundColor: '#f4f7fb' },
+  hero: { margin: 16, marginBottom: 10, elevation: 2 },
+  eyebrow: { color: '#0b74de', fontSize: 11, fontWeight: '700', letterSpacing: 1.2 },
+  title: { color: '#172033', fontSize: 26, marginTop: 6 },
+  error: { color: '#b3261e', marginTop: 10 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 12 },
+  metric: { width: '48%', marginBottom: 10, elevation: 1 },
+  metricIcon: { marginBottom: 8 },
+  metricLabel: { color: '#687386', fontSize: 12 },
+  metricValue: { fontSize: 20, fontWeight: '700', marginTop: 4 },
+  card: { margin: 16, marginTop: 6, elevation: 2 },
+  sectionTitle: { fontSize: 18, color: '#172033' },
+  probability: { fontSize: 48, fontWeight: '800', marginTop: 12 },
+  muted: { color: '#687386', lineHeight: 20 },
+  progress: { height: 10, borderRadius: 6, marginVertical: 16 },
+  rhythm: { color: '#172033', fontWeight: '600' },
 });
-
-export default HomeScreen;
