@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   Activity,
   AlertCircle,
@@ -12,6 +13,9 @@ import {
   RefreshCw,
   ShieldAlert,
   Wind,
+  Moon,
+  Plus,
+  RotateCcw,
 } from 'lucide-react';
 import {
   Area,
@@ -31,6 +35,7 @@ import {
   CardiacPrediction,
   Statistics,
   VitalSigns,
+  PatientInput,
   analyticsAPI,
   patientAPI,
   predictionAPI,
@@ -43,6 +48,13 @@ const RISK_COLORS = {
   MEDIUM: '#f59e0b',
   HIGH: '#f97316',
   CRITICAL: '#ef4444',
+};
+
+const emptyPatient: PatientInput = {
+  name: '', age: 45, gender: 'F', email: '', phone: '', bmi: 24,
+  height_cm: null, weight_kg: null, smoker: false, diabetes: false, hypertension: false,
+  family_history_cvd: false, family_history_hypertension: false, total_cholesterol: 200,
+  hdl_cholesterol: 50, ldl_cholesterol: 120, medications: [], medical_history: [],
 };
 
 const formatTime = (timestamp: string) => {
@@ -115,6 +127,11 @@ export default function Dashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dataWarning, setDataWarning] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [riskFilter, setRiskFilter] = useState('ALL');
+  const [addPatientOpen, setAddPatientOpen] = useState(false);
+  const [patientDraft, setPatientDraft] = useState<PatientInput>(emptyPatient);
+  const [darkMode, setDarkMode] = useState(false);
 
   const loadDashboardData = useCallback(async (refresh = false) => {
     setIsLoading(!refresh);
@@ -185,6 +202,46 @@ export default function Dashboard() {
     return () => window.clearInterval(interval);
   }, [loadDashboardData]);
 
+  useEffect(() => {
+    const enabled = localStorage.getItem('cardiotwin-dark-mode') === 'true';
+    setDarkMode(enabled);
+    document.documentElement.classList.toggle('dark', enabled);
+  }, []);
+
+  const toggleDarkMode = () => {
+    setDarkMode((current) => {
+      const next = !current;
+      localStorage.setItem('cardiotwin-dark-mode', String(next));
+      document.documentElement.classList.toggle('dark', next);
+      return next;
+    });
+  };
+
+  const createPatient = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    try {
+      await patientAPI.registerPatient(patientDraft);
+      toast.success('Patient added');
+      setAddPatientOpen(false);
+      setPatientDraft(emptyPatient);
+      await loadDashboardData(true);
+    } catch (createError) {
+      const message = createError instanceof Error ? createError.message : 'Could not add patient.';
+      toast.error(message);
+    }
+  };
+
+  const resetDemo = async () => {
+    if (!window.confirm('Reset all demo changes and restore the seeded patients?')) return;
+    try {
+      await patientAPI.resetDemo();
+      toast.success('Demo data reset');
+      await loadDashboardData(true);
+    } catch {
+      toast.error('Could not reset demo data.');
+    }
+  };
+
   const patientNames = useMemo(
     () => Object.fromEntries(patients.map((patient) => [patient.patient_id, patient.name])),
     [patients],
@@ -230,6 +287,14 @@ export default function Dashboard() {
     .filter((row) => row.prediction)
     .sort((a, b) => b.prediction!.cardiac_event_probability - a.prediction!.cardiac_event_probability);
 
+  const roster = useMemo(() => {
+    const rank: Record<string, number> = { CRITICAL: 0, HIGH: 1, MODERATE: 2, MEDIUM: 2, LOW: 3 };
+    return patients
+      .filter((patient) => `${patient.name} ${patient.patient_id} ${patient.email}`.toLowerCase().includes(search.toLowerCase()))
+      .filter((patient) => riskFilter === 'ALL' || (patient.risk_level === 'MODERATE' ? 'MEDIUM' : patient.risk_level) === riskFilter)
+      .sort((a, b) => (rank[a.risk_level || 'LOW'] ?? 3) - (rank[b.risk_level || 'LOW'] ?? 3));
+  }, [patients, riskFilter, search]);
+
   const activeAlerts = alerts.filter((alert) => !alert.acknowledged).length;
   const highRiskCount = statistics?.high_risk_patients ?? patients.filter((patient) => ['HIGH', 'CRITICAL'].includes(patient.risk_level ?? '')).length;
 
@@ -257,15 +322,12 @@ export default function Dashboard() {
             </div>
             <p className="mt-3 text-sm text-slate-500">Live patient risk, vital signs, and predictive cardiac intelligence.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => void loadDashboardData(true)}
-            disabled={isRefreshing}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            Refresh telemetry
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setAddPatientOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-sky-700"><Plus className="h-4 w-4" />Add patient</button>
+            <button type="button" onClick={toggleDarkMode} aria-label="Toggle dark mode" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 shadow-sm"><Moon className="h-4 w-4" />{darkMode ? 'Light' : 'Dark'}</button>
+            <button type="button" onClick={resetDemo} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 shadow-sm"><RotateCcw className="h-4 w-4" />Reset demo</button>
+            <button type="button" onClick={() => void loadDashboardData(true)} disabled={isRefreshing} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-60"><RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />Refresh telemetry</button>
+          </div>
         </div>
       </div>
 
@@ -292,6 +354,22 @@ export default function Dashboard() {
             <MetricCard label="Average heart rate" value={averageHeartRate == null ? (statistics?.average_heart_rate == null ? '—' : `${Math.round(statistics.average_heart_rate)} bpm`) : `${averageHeartRate} bpm`} detail={averageOxygen ? `Mean SpO₂ ${averageOxygen}%` : 'No recent vitals'} icon={HeartPulse} tone="bg-emerald-50 text-emerald-600" />
           </div>
         )}
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Patient roster</p><h2 className="mt-1 text-xl font-bold text-slate-950">Patients</h2></div>
+            <input aria-label="Search patients" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, ID or email" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm sm:w-72" />
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">{['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map((level) => <button key={level} type="button" onClick={() => setRiskFilter(level)} className={`rounded-full px-3 py-1.5 text-xs font-bold ${riskFilter === level ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{level === 'ALL' ? 'All risk levels' : level}</button>)}</div>
+          <div className="mt-4 divide-y divide-slate-100">{roster.map((patient) => {
+            const latest = vitalsByPatient[patient.patient_id]?.at(-1);
+            const prediction = predictions[patient.patient_id];
+            return <Link key={patient.patient_id} href={`/dashboard/patient/${patient.patient_id}`} className="flex flex-wrap items-center justify-between gap-3 py-4 transition hover:bg-slate-50 sm:px-3">
+              <div><p className="font-semibold text-slate-900">{patient.name}</p><p className="text-xs text-slate-500">{patient.patient_id} · {patient.age} years · {patient.gender}</p></div>
+              <div className="flex items-center gap-4 text-sm"><span className="hidden text-slate-600 sm:inline">{latest?.heart_rate_bpm ?? '—'} bpm · {latest?.blood_pressure_systolic ?? '—'}/{latest?.blood_pressure_diastolic ?? '—'}</span><span className={`rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${riskBadge(prediction?.risk_classification || patient.risk_level)}`}>{prediction?.risk_classification || patient.risk_level || 'LOW'}</span><span className="font-semibold text-sky-700">Open →</span></div>
+            </Link>;
+          })}{!isLoading && !roster.length && <p className="py-8 text-center text-sm text-slate-500">No patients match your search.</p>}</div>
+        </section>
 
         <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -338,8 +416,19 @@ export default function Dashboard() {
           </section>
         </div>
 
-        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-4 text-xs text-slate-500 shadow-sm"><span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-emerald-500" />Connected to CardioTwin API</span><span className="flex items-center gap-2"><Wind className="h-4 w-4" />Auto-refresh every 30 seconds</span></div>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-xs text-slate-500 shadow-sm"><span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-emerald-500" />Connected to CardioTwin API</span><span className="flex items-center gap-2"><Wind className="h-4 w-4" />Auto-refresh every 30 seconds</span><span>Synthetic demo data. Not a medical device. Not for clinical decisions.</span></div>
       </div>
+
+      {addPatientOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="add-patient-title"><form onSubmit={createPatient} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
+        <div className="flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-widest text-sky-700">New synthetic record</p><h2 id="add-patient-title" className="mt-1 text-xl font-bold">Add patient</h2></div><button type="button" onClick={() => setAddPatientOpen(false)} className="rounded-lg px-3 py-2 text-slate-500 hover:bg-slate-100">Close</button></div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {([['name','Name','text'],['age','Age','number'],['gender','Gender','text'],['email','Email','email'],['phone','Phone','tel'],['bmi','BMI','number'],['height_cm','Height (cm)','number'],['weight_kg','Weight (kg)','number'],['total_cholesterol','Total cholesterol','number'],['hdl_cholesterol','HDL cholesterol','number'],['ldl_cholesterol','LDL cholesterol','number']] as const).map(([key,label,type]) => <label key={key} className="text-xs font-semibold text-slate-600">{label}<input required={['name','age','gender','email','phone','bmi'].includes(key)} type={type} min={key === 'age' ? 18 : undefined} max={key === 'age' ? 120 : undefined} step={type === 'number' ? 'any' : undefined} value={(patientDraft as unknown as Record<string, string | number | null>)[key] ?? ''} onChange={(event) => setPatientDraft((draft) => ({ ...draft, [key]: type === 'number' ? Number(event.target.value) : event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" /></label>)}
+          {([['smoker','Smoker'],['diabetes','Diabetes'],['hypertension','Hypertension'],['family_history_cvd','Family history CVD'],['family_history_hypertension','Family history hypertension']] as const).map(([key,label]) => <label key={key} className="flex items-center gap-2 rounded-lg border border-slate-200 p-3 text-sm"><input type="checkbox" checked={Boolean(patientDraft[key])} onChange={(event) => setPatientDraft((draft) => ({ ...draft, [key]: event.target.checked }))} />{label}</label>)}
+          <label className="text-xs font-semibold text-slate-600">Medications (comma separated)<input value={patientDraft.medications?.join(', ') ?? ''} onChange={(event) => setPatientDraft((draft) => ({ ...draft, medications: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" /></label>
+          <label className="text-xs font-semibold text-slate-600">Medical history (comma separated)<input value={patientDraft.medical_history?.join(', ') ?? ''} onChange={(event) => setPatientDraft((draft) => ({ ...draft, medical_history: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" /></label>
+        </div>
+        <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setAddPatientOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold">Cancel</button><button type="submit" className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white">Save patient</button></div>
+      </form></div>}
     </main>
   );
 }

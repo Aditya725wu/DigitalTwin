@@ -1,31 +1,43 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Card, Paragraph, Title } from 'react-native-paper';
-import { Activity, HeartPulse, TrendingDown, TrendingUp } from 'lucide-react-native';
+import React, { useState } from 'react';
+import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Button, Card, Paragraph, TextInput, Title } from 'react-native-paper';
+import { Activity, HeartPulse, Plus, TrendingUp } from 'lucide-react-native';
 import { sensorAPI } from '../services/api';
+import { useTwin } from '../context/AppContext';
 
-const PATIENT_ID = 'PAT000001';
+const blank = { heart_rate_bpm: '72', blood_pressure_systolic: '120', blood_pressure_diastolic: '80', oxygen_saturation: '98', ecg_rhythm: 'Normal sinus rhythm' };
 
 export default function CardiacScreen() {
-  const [vitals, setVitals] = useState([]);
-  const [error, setError] = useState('');
-  const loadVitals = useCallback(async () => {
-    try { setError(''); setVitals((await sensorAPI.getVitals(PATIENT_ID, 24)).data || []); }
-    catch (loadError) { setError('Telemetry history is unavailable.'); console.error(loadError); }
-  }, []);
-  useEffect(() => { void loadVitals(); }, [loadVitals]);
+  const { patientId, vitals, setVitals, baseline, refresh, refreshing, loading, error, darkMode, notify } = useTwin();
+  const [formOpen, setFormOpen] = useState(false);
+  const [detail, setDetail] = useState(null);
+  const [draft, setDraft] = useState(blank);
   const latest = vitals[vitals.length - 1];
-  const previous = vitals[vitals.length - 2];
-  const hrTrend = latest?.heart_rate_bpm > previous?.heart_rate_bpm ? 'rising' : 'stable';
-  return <ScrollView style={styles.container}>
-    <Card style={styles.card}><Card.Content>
-      <View style={styles.heading}><HeartPulse size={24} color="#0b74de" /><Title style={styles.title}>Cardiac telemetry</Title></View>
-      <Paragraph>Recent simulated wearable readings for the patient twin.</Paragraph>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <View style={styles.readingRow}><Reading label="Heart rate" value={latest?.heart_rate_bpm ? `${latest.heart_rate_bpm} bpm` : '—'} icon={hrTrend === 'rising' ? <TrendingUp size={18} color="#d32f2f" /> : <Activity size={18} color="#2e7d32" />} /><Reading label="Blood pressure" value={latest?.blood_pressure_systolic ? `${latest.blood_pressure_systolic}/${latest.blood_pressure_diastolic} mmHg` : '—'} /><Reading label="ECG rhythm" value={latest?.ecg_rhythm || '—'} /></View>
-    </Card.Content></Card>
-    <Card style={styles.card}><Card.Content><Title style={styles.title}>Recent readings</Title>{vitals.slice().reverse().map((reading, index) => <View key={`${reading.timestamp}-${index}`} style={styles.history}><Text style={styles.time}>{new Date(reading.timestamp).toLocaleTimeString()}</Text><Text style={styles.value}>{reading.heart_rate_bpm || '—'} bpm</Text><Text style={styles.bp}>{reading.blood_pressure_systolic ? `${reading.blood_pressure_systolic}/${reading.blood_pressure_diastolic}` : '—'}</Text></View>)}{!vitals.length && <Text style={styles.muted}>No telemetry has arrived yet.</Text>}</Card.Content></Card>
-  </ScrollView>;
+  const bg = darkMode ? '#0b1220' : '#f4f7fb';
+  const save = async () => {
+    const hr = Number(draft.heart_rate_bpm), sbp = Number(draft.blood_pressure_systolic), dbp = Number(draft.blood_pressure_diastolic), spo2 = Number(draft.oxygen_saturation);
+    if (!Number.isFinite(hr) || hr < 20 || hr > 250) return notify('Heart rate must be between 20 and 250 bpm.', 'error');
+    if (!Number.isFinite(sbp) || sbp < 50 || sbp > 300) return notify('Systolic BP must be between 50 and 300 mmHg.', 'error');
+    if (!Number.isFinite(dbp) || dbp < 30 || dbp > 200) return notify('Diastolic BP must be between 30 and 200 mmHg.', 'error');
+    if (!Number.isFinite(spo2) || spo2 < 50 || spo2 > 100) return notify('SpO2 must be between 50 and 100%.', 'error');
+    try {
+      await sensorAPI.submitVitals(patientId, { heart_rate_bpm: hr, blood_pressure_systolic: sbp, blood_pressure_diastolic: dbp, oxygen_saturation: spo2, ecg_rhythm: draft.ecg_rhythm, ecg_quality: 'GOOD', source: 'mobile-app' });
+      setDraft(blank); setFormOpen(false); await refresh(true); notify('Reading saved');
+    } catch (saveError) { notify(saveError?.response?.data?.detail || 'Could not save reading. Check the API connection.', 'error'); }
+  };
+  return <View style={[styles.root, { backgroundColor: bg }]}>
+    <ScrollView contentContainerStyle={{ paddingBottom: 96 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => refresh(true)} />}>
+      <Card style={[styles.card, darkMode && styles.darkCard]}><Card.Content><View style={styles.heading}><HeartPulse size={24} color="#0b74de" /><Title style={styles.title}>Cardiac telemetry</Title></View><Paragraph>Recent synthetic readings for the patient twin.</Paragraph>{error ? <Text style={styles.error}>{error}</Text> : null}{loading && !vitals.length ? <Text style={styles.muted}>Loading readings…</Text> : null}
+        <View style={styles.readingRow}><Reading darkMode={darkMode} label="Heart rate" value={latest?.heart_rate_bpm != null ? `${latest.heart_rate_bpm} bpm` : '—'} icon={<TrendingUp size={18} color="#d32f2f" />} /><Reading darkMode={darkMode} label="Blood pressure" value={latest?.blood_pressure_systolic != null ? `${latest.blood_pressure_systolic}/${latest.blood_pressure_diastolic} mmHg` : '—'} /><Reading darkMode={darkMode} label="ECG rhythm" value={latest?.ecg_rhythm || '—'} /></View>
+        {baseline?.large_deviation ? <Text style={styles.warning}>Latest reading differs significantly from the patient baseline.</Text> : null}
+      </Card.Content></Card>
+      <Card style={[styles.card, darkMode && styles.darkCard]}><Card.Content><Title style={styles.title}>Recent readings</Title>{vitals.slice().reverse().map((reading, index) => <TouchableOpacity key={`${reading.timestamp}-${index}`} onPress={() => setDetail(reading)} style={styles.history}><Text style={styles.time}>{reading.timestamp ? new Date(reading.timestamp).toLocaleTimeString() : '—'}</Text><Text style={styles.value}>{reading.heart_rate_bpm ?? '—'} bpm</Text><Text style={styles.bp}>{reading.blood_pressure_systolic != null ? `${reading.blood_pressure_systolic}/${reading.blood_pressure_diastolic}` : '—'}</Text><Text style={styles.open}>Details</Text></TouchableOpacity>)}{!vitals.length && !loading && <Text style={styles.muted}>No telemetry has arrived yet.</Text>}</Card.Content></Card>
+      <Text style={styles.disclaimer}>Synthetic demo data. Not a medical device. Not for clinical decisions.</Text>
+    </ScrollView>
+    <TouchableOpacity accessibilityLabel="Add reading" style={styles.fab} onPress={() => setFormOpen(true)}><Plus size={22} color="#fff" /><Text style={styles.fabText}>Add reading</Text></TouchableOpacity>
+    <Modal visible={formOpen} transparent animationType="slide" onRequestClose={() => setFormOpen(false)}><Pressable style={styles.overlay} onPress={() => setFormOpen(false)}><Pressable style={[styles.modal, darkMode && styles.darkCard]} onPress={() => {}}><Title>Add vital reading</Title><Paragraph>Use realistic values; ranges are checked before saving.</Paragraph>{[['heart_rate_bpm','Heart rate (20–250)'],['blood_pressure_systolic','Systolic BP (50–300)'],['blood_pressure_diastolic','Diastolic BP (30–200)'],['oxygen_saturation','SpO2 (50–100)']].map(([key,label]) => <TextInput key={key} mode="outlined" label={label} keyboardType="numeric" value={draft[key]} onChangeText={(value) => setDraft({ ...draft, [key]: value })} style={styles.input} />)}<Text style={styles.label}>ECG rhythm</Text><View style={styles.rhythms}>{['Normal sinus rhythm','Tachycardia','Bradycardia','AFib','PVC'].map((rhythm) => <TouchableOpacity key={rhythm} onPress={() => setDraft({ ...draft, ecg_rhythm: rhythm })} style={[styles.chip, draft.ecg_rhythm === rhythm && styles.selectedChip]}><Text style={draft.ecg_rhythm === rhythm ? styles.selectedText : styles.chipText}>{rhythm}</Text></TouchableOpacity>)}</View><View style={styles.actions}><Button onPress={() => setFormOpen(false)}>Cancel</Button><Button mode="contained" onPress={() => void save()}>Save reading</Button></View></Pressable></Pressable></Modal>
+    <Modal visible={Boolean(detail)} transparent animationType="fade" onRequestClose={() => setDetail(null)}><Pressable style={styles.overlay} onPress={() => setDetail(null)}><View style={[styles.modal, darkMode && styles.darkCard]}><Title>Reading details</Title>{detail && <View><Text style={styles.detailText}>Heart rate: {detail.heart_rate_bpm ?? '—'} bpm</Text><Text style={styles.detailText}>BP: {detail.blood_pressure_systolic ?? '—'}/{detail.blood_pressure_diastolic ?? '—'} mmHg</Text><Text style={styles.detailText}>SpO2: {detail.oxygen_saturation ?? '—'}%</Text><Text style={styles.detailText}>Rhythm: {detail.ecg_rhythm ?? '—'}</Text><Text style={styles.detailText}>{detail.timestamp ? new Date(detail.timestamp).toLocaleString() : ''}</Text></View>}<Button onPress={() => setDetail(null)}>Close</Button></View></Pressable></Modal>
+  </View>;
 }
-function Reading({ label, value, icon }) { return <View style={styles.reading}><View style={styles.icon}>{icon || <Activity size={18} color="#687386" />}</View><Text style={styles.label}>{label}</Text><Text style={styles.value}>{value}</Text></View>; }
-const styles = StyleSheet.create({ container: { flex: 1, backgroundColor: '#f4f7fb' }, card: { margin: 16, marginTop: 6, elevation: 2 }, heading: { flexDirection: 'row', alignItems: 'center', gap: 10 }, title: { fontSize: 19, color: '#172033' }, readingRow: { marginTop: 18 }, reading: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#edf0f4' }, icon: { width: 28 }, label: { flex: 1, color: '#687386' }, value: { color: '#172033', fontWeight: '700' }, history: { flexDirection: 'row', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#edf0f4' }, time: { flex: 1, color: '#687386', fontSize: 12 }, value: { flex: 1, color: '#172033', fontWeight: '700' }, bp: { color: '#172033', fontWeight: '600' }, error: { color: '#b3261e', marginTop: 10 }, muted: { color: '#687386', marginTop: 16 } });
+function Reading({ label, value, icon, darkMode }) { return <View style={styles.reading}><View style={styles.icon}>{icon || <Activity size={18} color="#687386" />}</View><Text style={[styles.label, darkMode && styles.lightText]}>{label}</Text><Text style={[styles.value, darkMode && styles.lightText]}>{value}</Text></View>; }
+const styles = StyleSheet.create({ root: { flex: 1 }, card: { margin: 16, marginTop: 12, elevation: 2 }, darkCard: { backgroundColor: '#121c2e' }, heading: { flexDirection: 'row', alignItems: 'center', gap: 10 }, title: { fontSize: 19 }, readingRow: { marginTop: 18 }, reading: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#edf0f4' }, icon: { width: 28 }, label: { flex: 1, color: '#687386' }, value: { color: '#172033', fontWeight: '700' }, history: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#edf0f4', gap: 5 }, time: { flex: 1, color: '#687386', fontSize: 11 }, bp: { color: '#172033', fontWeight: '600' }, error: { color: '#b3261e', marginTop: 10 }, muted: { color: '#687386', marginTop: 16 }, warning: { color: '#b45309', backgroundColor: '#fff7ed', padding: 10, borderRadius: 8, marginTop: 8 }, open: { color: '#0b74de', fontSize: 11, marginLeft: 5 }, fab: { position: 'absolute', right: 18, bottom: 20, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#0b74de', borderRadius: 28, paddingHorizontal: 18, paddingVertical: 14, elevation: 5 }, fabText: { color: '#fff', fontWeight: '700' }, overlay: { flex: 1, justifyContent: 'center', backgroundColor: '#0008', padding: 18 }, modal: { backgroundColor: '#fff', padding: 20, borderRadius: 18, maxHeight: '90%' }, input: { marginTop: 8, backgroundColor: 'transparent' }, label: { color: '#687386', marginTop: 10 }, rhythms: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }, chip: { borderWidth: 1, borderColor: '#ccd5e1', borderRadius: 16, paddingHorizontal: 10, paddingVertical: 7 }, selectedChip: { backgroundColor: '#0b74de', borderColor: '#0b74de' }, chipText: { color: '#465365', fontSize: 11 }, selectedText: { color: '#fff', fontSize: 11 }, actions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16 }, detailText: { color: '#536174', marginVertical: 5 }, disclaimer: { color: '#778397', textAlign: 'center', fontSize: 10, marginBottom: 18 }, lightText: { color: '#e5edf8' } });

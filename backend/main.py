@@ -6,14 +6,17 @@ Main application and API endpoints for cardiac digital twin
 from fastapi import FastAPI, HTTPException, Query, status, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from typing import Optional, List
+from typing import Optional, List, Dict, Set
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import json
 import numpy as np
 import uuid
+import asyncio
+import random
+import re
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,14 +26,14 @@ logger = logging.getLogger(__name__)
 
 class PatientCreate(BaseModel):
     """Patient registration model for cardiac monitoring"""
-    name: str
+    name: str = Field(min_length=1, max_length=120)
     age: int = Field(ge=18, le=120)
-    gender: str
-    email: str
-    phone: str
+    gender: str = Field(min_length=1, max_length=40)
+    email: str = Field(min_length=5, max_length=254)
+    phone: str = Field(min_length=5, max_length=40)
     bmi: float = Field(gt=0, le=100)
-    height_cm: Optional[float] = None
-    weight_kg: Optional[float] = None
+    height_cm: Optional[float] = Field(default=None, ge=30, le=250)
+    weight_kg: Optional[float] = Field(default=None, gt=1, le=500)
     # Cardiac risk factors
     smoker: bool = False
     diabetes: bool = False
@@ -43,6 +46,28 @@ class PatientCreate(BaseModel):
     medications: List[str] = Field(default_factory=list)
     medical_history: List[str] = Field(default_factory=list)
 
+    @field_validator("name", "gender", "email", "phone")
+    @classmethod
+    def strip_text_fields(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("This field cannot be empty")
+        return cleaned
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value):
+            raise ValueError("Enter a valid email address")
+        return value
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, value: str) -> str:
+        if not re.fullmatch(r"[+0-9() .-]{5,40}", value) or sum(character.isdigit() for character in value) < 5:
+            raise ValueError("Enter a valid phone number")
+        return value
+
 
 class PatientResponse(BaseModel):
     """Patient response model"""
@@ -52,19 +77,41 @@ class PatientResponse(BaseModel):
     gender: str
     email: str
     risk_level: Optional[str] = "LOW"
+    flag_streak: int = 0
     created_at: str
 
 
 class VitalSigns(BaseModel):
     """Vital signs model for cardiac monitoring"""
     heart_rate_bpm: Optional[int] = Field(default=None, ge=20, le=250)
-    blood_pressure_systolic: Optional[int] = Field(default=None, ge=40, le=300)
-    blood_pressure_diastolic: Optional[int] = Field(default=None, ge=20, le=200)
+    blood_pressure_systolic: Optional[int] = Field(default=None, ge=50, le=300)
+    blood_pressure_diastolic: Optional[int] = Field(default=None, ge=30, le=200)
     oxygen_saturation: Optional[float] = Field(default=None, ge=50, le=100)
     ecg_rhythm: Optional[str] = None
     ecg_quality: Optional[str] = None
     timestamp: Optional[str] = None
     source: str = "wearable"
+
+
+class WhatIfRequest(BaseModel):
+    heart_rate_bpm: Optional[int] = Field(default=None, ge=20, le=250)
+    blood_pressure_systolic: Optional[int] = Field(default=None, ge=50, le=300)
+    blood_pressure_diastolic: Optional[int] = Field(default=None, ge=30, le=200)
+    oxygen_saturation: Optional[float] = Field(default=None, ge=50, le=100)
+    smoker: Optional[bool] = None
+    diabetes: Optional[bool] = None
+    hypertension: Optional[bool] = None
+    family_history_cvd: Optional[bool] = None
+    age: Optional[int] = Field(default=None, ge=18, le=120)
+    gender: Optional[str] = None
+    total_cholesterol: Optional[float] = Field(default=None, ge=50, le=600)
+    hdl_cholesterol: Optional[float] = Field(default=None, ge=10, le=150)
+    ldl_cholesterol: Optional[float] = Field(default=None, ge=10, le=500)
+
+
+class FamilyContact(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    phone: str = Field(min_length=5, max_length=40)
 
 
 class CardiacPredictionResponse(BaseModel):
@@ -145,6 +192,171 @@ def calculate_framingham_risk(features: dict) -> float:
     # Convert to probability
     probability = min(score / 45, 0.99)
     return probability
+
+
+def framingham_factors(features: dict) -> List[dict]:
+    """Return the point contributions used by calculate_framingham_risk."""
+    factors = []
+    age = features.get('age') or 50
+    age_points = 8 if age >= 55 else 6 if age >= 45 else 4 if age >= 35 else 0
+    factors.append({"factor": "Age", "points": age_points})
+    gender_points = 3 if features.get('gender_male', 0) == 1 else 0
+    factors.append({"factor": "Gender", "points": gender_points})
+    systolic = features.get('systolic_bp') or 120
+    bp_points = 7 if systolic >= 140 else 5 if systolic >= 130 else 3 if systolic >= 120 else 0
+    factors.append({"factor": "Systolic BP", "points": bp_points})
+    total_chol = features.get('cholesterol_total') or 200
+    cholesterol_points = 5 if total_chol >= 240 else 3 if total_chol >= 200 else 0
+    factors.append({"factor": "Total cholesterol", "points": cholesterol_points})
+    hdl = features.get('cholesterol_hdl') or 50
+    hdl_points = 4 if hdl < 40 else 2 if hdl < 50 else 0
+    factors.append({"factor": "HDL cholesterol", "points": hdl_points})
+    factors.append({"factor": "Smoking", "points": 4 if features.get('smoker', 0) == 1 else 0})
+    factors.append({"factor": "Diabetes", "points": 3 if features.get('diabetes', 0) == 1 else 0})
+    return factors
+
+
+def prediction_snapshot(patient: dict, history: List[dict]) -> dict:
+    """Compute a prediction without changing state or creating an alert."""
+    features = prepare_cardiac_features(patient, history)
+    probability = calculate_framingham_risk(features)
+    arrhythmia_risk = "Normal sinus rhythm"
+    arrhythmia_severity = "NORMAL"
+    if history:
+        result = detect_arrhythmia(history[-1].get('heart_rate_bpm') or 72, history[-1].get('ecg_rhythm'))
+        arrhythmia_risk = result['rhythm_status']
+        arrhythmia_severity = result['severity']
+    bp_data = [
+        {'systolic': v.get('blood_pressure_systolic', 120), 'diastolic': v.get('blood_pressure_diastolic', 80)}
+        for v in history if v.get('blood_pressure_systolic') is not None
+    ]
+    bp = predict_bp_trend(bp_data) if bp_data else {'trend': 'STABLE', 'risk_level': 'NORMAL'}
+    risk = "CRITICAL" if probability > 0.85 or bp['risk_level'] == "CRITICAL" else (
+        "HIGH" if probability > 0.7 or arrhythmia_severity == "HIGH" or bp['risk_level'] == "HIGH" else (
+            "MODERATE" if probability > 0.4 or arrhythmia_severity != "NORMAL" or bp['risk_level'] == "ELEVATED" else "LOW"
+        )
+    )
+    return {
+        "cardiac_event_probability": round(probability, 3),
+        "arrhythmia_risk": arrhythmia_risk,
+        "blood_pressure_trend": bp['trend'],
+        "bp_risk_level": bp['risk_level'],
+        "risk_classification": risk,
+        "framingham_score": round(probability, 3),
+        "recommended_actions": get_cardiac_recommendations(risk, arrhythmia_risk, bp['risk_level']),
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+def _is_flagged(vitals: dict) -> bool:
+    return bool(
+        (vitals.get('heart_rate_bpm') is not None and (vitals['heart_rate_bpm'] > 120 or vitals['heart_rate_bpm'] < 50))
+        or (vitals.get('blood_pressure_systolic') is not None and vitals['blood_pressure_systolic'] >= 160)
+        or (vitals.get('blood_pressure_diastolic') is not None and vitals['blood_pressure_diastolic'] >= 100)
+        or (vitals.get('oxygen_saturation') is not None and vitals['oxygen_saturation'] < 90)
+        or vitals.get('ecg_rhythm') in ['AFib', 'PVC', 'ST Elevation', 'T Wave Inversion']
+    )
+
+
+def _update_flag_streak(patient_id: str, vitals: dict) -> int:
+    flagged = _is_flagged(vitals)
+    summary_timestamp = vitals.get("summary_timestamp") or vitals.get("timestamp") or datetime.now().isoformat()
+    try:
+        parsed_time = datetime.fromisoformat(str(summary_timestamp).replace("Z", "+00:00"))
+        if parsed_time.utcoffset() is not None:
+            parsed_time = parsed_time.astimezone(timezone.utc).replace(tzinfo=None)
+        bucket = parsed_time.replace(minute=0, second=0, microsecond=0)
+    except ValueError:
+        bucket = datetime.now().replace(minute=0, second=0, microsecond=0)
+    bucket_key = bucket.isoformat()
+    previous_key = patient_flag_hour_keys.get(patient_id)
+    previous_flagged = patient_flag_hour_status.get(patient_id, False)
+    current_streak = patient_flag_streaks.get(patient_id, 0)
+    if previous_key == bucket_key:
+        streak = current_streak if flagged == previous_flagged else 1 if flagged else 0
+    elif previous_key:
+        previous_bucket = datetime.fromisoformat(previous_key)
+        consecutive_hour = (bucket - previous_bucket) == timedelta(hours=1)
+        streak = min(3, current_streak + 1) if flagged and previous_flagged and consecutive_hour else 1 if flagged else 0
+    else:
+        streak = 1 if flagged else 0
+    patient_flag_hour_keys[patient_id] = bucket_key
+    patient_flag_hour_status[patient_id] = flagged
+    patient_flag_streaks[patient_id] = streak
+    if patient_id in patients_db:
+        patients_db[patient_id]["flag_streak"] = streak
+    return streak
+
+
+def _record_critical_family_event(patient_id: str, alert: dict, streak: int) -> None:
+    """Log a simulated notice; it is only marked sent after the three-strike gate."""
+    if alert.get('severity') != 'CRITICAL':
+        return
+    contact = family_contacts.get(patient_id)
+    if not contact:
+        return
+    log = family_notifications.setdefault(patient_id, [])
+    if any(item.get('alert_id') == alert['alert_id'] for item in log):
+        return
+    log.append({
+        "notification_id": f"SIM{uuid.uuid4().hex[:10].upper()}",
+        "patient_id": patient_id,
+        "alert_id": alert['alert_id'],
+        "recipient_name": contact['name'],
+        "recipient_phone": contact['phone'],
+        "message": f"Simulated critical alert for {patients_db[patient_id]['name']}: {alert['message']}",
+        "status": "simulated_sent" if streak >= 3 else "simulated_queued",
+        "simulated": True,
+        "timestamp": datetime.now().isoformat(),
+    })
+
+
+def _advance_queued_family_events(patient_id: str, streak: int) -> None:
+    if streak < 3:
+        return
+    for notification in family_notifications.get(patient_id, []):
+        if notification['status'] == 'simulated_queued':
+            notification['status'] = 'simulated_sent'
+            notification['timestamp'] = datetime.now().isoformat()
+
+
+def _store_vital(patient_id: str, vitals: VitalSigns, summary_timestamp: Optional[str] = None) -> tuple:
+    reading = vitals.model_dump()
+    reading['timestamp'] = reading.get('timestamp') or datetime.now().isoformat()
+    reading['received_at'] = datetime.now().isoformat()
+    if summary_timestamp:
+        reading['summary_timestamp'] = summary_timestamp
+    readings = patient_vitals.setdefault(patient_id, [])
+    readings.append(reading)
+    if len(readings) > 1000:
+        del readings[:-1000]
+    streak = _update_flag_streak(patient_id, reading)
+    alert_vitals = vitals.model_copy(update={"timestamp": reading["timestamp"]})
+    alerts = check_cardiac_alerts(patient_id, alert_vitals)
+    for alert in alerts:
+        alerts_db[alert['alert_id']] = alert
+        _record_critical_family_event(patient_id, alert, streak)
+    _advance_queued_family_events(patient_id, streak)
+    return reading, alerts, streak
+
+
+async def _broadcast(patient_id: str, message: dict) -> None:
+    clients = list(websocket_clients.get(patient_id, set()))
+    for client in clients:
+        try:
+            await client.send_json(message)
+        except Exception:
+            websocket_clients.get(patient_id, set()).discard(client)
+
+
+async def _ingest_and_broadcast(patient_id: str, vitals: VitalSigns, summary_timestamp: Optional[str] = None) -> dict:
+    reading, alerts, streak = _store_vital(patient_id, vitals, summary_timestamp)
+    snapshot = prediction_snapshot(patients_db[patient_id], patient_vitals[patient_id])
+    await _broadcast(patient_id, {"type": "vitals", "data": reading, "flag_streak": streak})
+    for alert in alerts:
+        await _broadcast(patient_id, {"type": "alert", "data": alert})
+    await _broadcast(patient_id, {"type": "prediction_update", **snapshot, "flag_streak": streak})
+    return {"status": "received", "patient_id": patient_id, "alerts_generated": len(alerts), "flag_streak": streak, "timestamp": datetime.now().isoformat()}
 
 
 def detect_arrhythmia(heart_rate: Optional[int], ecg_rhythm: Optional[str] = None) -> dict:
@@ -255,6 +467,13 @@ patients_db = {}
 alerts_db = {}
 patient_vitals = {}
 patient_counter = 0
+family_contacts: Dict[str, dict] = {}
+family_notifications: Dict[str, List[dict]] = {}
+patient_flag_streaks: Dict[str, int] = {}
+patient_flag_hour_keys: Dict[str, str] = {}
+patient_flag_hour_status: Dict[str, bool] = {}
+simulator_tasks: Dict[str, asyncio.Task] = {}
+websocket_clients: Dict[str, Set[WebSocket]] = {}
 
 
 def seed_demo_data():
@@ -343,6 +562,7 @@ def seed_demo_data():
     ]
 
     for p in demo_patients:
+        p["flag_streak"] = 0
         patients_db[p["patient_id"]] = p
         patient_vitals[p["patient_id"]] = [
             {
@@ -416,7 +636,8 @@ app = FastAPI(
 # Add CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:19006", "http://127.0.0.1:19006"],
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|192\.168\.[0-9]+\.[0-9]+|10\.[0-9]+\.[0-9]+\.[0-9]+|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]+\.[0-9]+)(:[0-9]+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -470,6 +691,7 @@ async def register_patient(patient: PatientCreate):
         "medications": patient.medications,
         "medical_history": patient.medical_history,
         "risk_level": "LOW",
+        "flag_streak": 0,
         "created_at": datetime.now().isoformat(),
     }
 
@@ -481,6 +703,8 @@ async def register_patient(patient: PatientCreate):
 
     patients_db[patient_id] = patient_data
     patient_vitals[patient_id] = []
+    patient_flag_streaks[patient_id] = 0
+    family_notifications[patient_id] = []
 
     logger.info(f"Registered cardiac patient: {patient_id}")
 
@@ -494,6 +718,41 @@ async def get_patient(patient_id: str):
         raise HTTPException(status_code=404, detail="Patient not found")
 
     return patients_db[patient_id]
+
+
+@app.put("/api/patients/{patient_id}", tags=["Patients"])
+async def update_patient(patient_id: str, patient: PatientCreate):
+    """Replace a patient's validated EHR fields."""
+    if patient_id not in patients_db:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    current = patients_db[patient_id]
+    updated = patient.model_dump()
+    updated.update({"patient_id": patient_id, "created_at": current.get("created_at"), "risk_level": current.get("risk_level", "LOW"), "flag_streak": patient_flag_streaks.get(patient_id, 0)})
+    patients_db[patient_id] = updated
+    snapshot = prediction_snapshot(updated, patient_vitals.get(patient_id, []))
+    patients_db[patient_id]["risk_level"] = snapshot["risk_classification"]
+    return patients_db[patient_id]
+
+
+@app.delete("/api/patients/{patient_id}", tags=["Patients"])
+async def delete_patient(patient_id: str):
+    """Delete the patient and associated in-memory data."""
+    if patient_id not in patients_db:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    task = simulator_tasks.pop(patient_id, None)
+    if task:
+        task.cancel()
+    del patients_db[patient_id]
+    patient_vitals.pop(patient_id, None)
+    patient_flag_streaks.pop(patient_id, None)
+    patient_flag_hour_keys.pop(patient_id, None)
+    patient_flag_hour_status.pop(patient_id, None)
+    family_contacts.pop(patient_id, None)
+    family_notifications.pop(patient_id, None)
+    websocket_clients.pop(patient_id, None)
+    for alert_id in [key for key, alert in alerts_db.items() if alert.get("patient_id") == patient_id]:
+        alerts_db.pop(alert_id, None)
+    return {"status": "deleted", "patient_id": patient_id}
 
 
 @app.get("/api/patients", tags=["Patients"])
@@ -511,33 +770,8 @@ async def submit_vital_signs(patient_id: str, vitals: VitalSigns):
     if patient_id not in patients_db:
         raise HTTPException(status_code=404, detail="Patient not found")
 
-    vitals_dict = vitals.model_dump()
-    vitals_dict["timestamp"] = vitals_dict.get("timestamp") or datetime.now().isoformat()
-    vitals_dict["received_at"] = datetime.now().isoformat()
-
-    if patient_id not in patient_vitals:
-        patient_vitals[patient_id] = []
-
-    patient_vitals[patient_id].append(vitals_dict)
-
-    # Keep only last 1000 readings
-    if len(patient_vitals[patient_id]) > 1000:
-        patient_vitals[patient_id] = patient_vitals[patient_id][-1000:]
-
     logger.info(f"Received vitals from {patient_id}: HR={vitals.heart_rate_bpm}, BP={vitals.blood_pressure_systolic}/{vitals.blood_pressure_diastolic}")
-
-    # Check for immediate alerts
-    alerts = check_cardiac_alerts(patient_id, vitals)
-    for alert in alerts:
-        alerts_db[alert["alert_id"]] = alert
-        logger.warning(f"Alert created: {alert['alert_id']} - {alert['message']}")
-
-    return {
-        "status": "received",
-        "patient_id": patient_id,
-        "alerts_generated": len(alerts),
-        "timestamp": datetime.now().isoformat(),
-    }
+    return await _ingest_and_broadcast(patient_id, vitals)
 
 
 
@@ -564,6 +798,115 @@ async def get_latest_vitals(patient_id: str):
         raise HTTPException(status_code=404, detail="No vital signs recorded")
 
     return vitals[-1]
+
+
+@app.post("/api/patients/{patient_id}/whatif", tags=["Predictions"])
+async def what_if_prediction(patient_id: str, overrides: WhatIfRequest):
+    """Return a deterministic hypothetical prediction without modifying stored data."""
+    if patient_id not in patients_db:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    changes = overrides.model_dump(exclude_unset=True, exclude_none=True)
+    patient_changes = {key: value for key, value in changes.items() if key in PatientCreate.model_fields}
+    vital_changes = {key: value for key, value in changes.items() if key in VitalSigns.model_fields}
+    hypothetical_patient = {**patients_db[patient_id], **patient_changes}
+    history = [dict(item) for item in patient_vitals.get(patient_id, [])]
+    if vital_changes:
+        latest = history[-1] if history else {"timestamp": datetime.now().isoformat(), "source": "what-if"}
+        history[-1:] = [{**latest, **vital_changes}]
+    result = prediction_snapshot(hypothetical_patient, history)
+    return {"patient_id": patient_id, **result, "what_if_only": True, "history_unchanged": True}
+
+
+@app.get("/api/patients/{patient_id}/baseline", tags=["Analytics"])
+async def patient_baseline(patient_id: str):
+    if patient_id not in patients_db:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    history = patient_vitals.get(patient_id, [])
+    keys = {
+        "heart_rate_bpm": "average_heart_rate_bpm",
+        "blood_pressure_systolic": "average_systolic_bp",
+        "blood_pressure_diastolic": "average_diastolic_bp",
+        "oxygen_saturation": "average_oxygen_saturation",
+    }
+    average = {}
+    for key, output_key in keys.items():
+        values = [item[key] for item in history if item.get(key) is not None]
+        average[output_key] = round(float(np.mean(values)), 1) if values else None
+    latest = history[-1] if history else None
+    deviation = {}
+    large = False
+    if latest:
+        for key, output_key in keys.items():
+            mean = average[output_key]
+            value = latest.get(key)
+            pct = round(((value - mean) / abs(mean)) * 100, 1) if value is not None and mean not in (None, 0) else None
+            deviation[key] = pct
+            if pct is not None and abs(pct) >= 20:
+                large = True
+    return {"patient_id": patient_id, "reading_count": len(history), "average": average, "latest": latest, "deviation_percent": deviation, "large_deviation": large}
+
+
+@app.get("/api/patients/{patient_id}/explain", tags=["Predictions"])
+async def explain_risk(patient_id: str):
+    if patient_id not in patients_db:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    patient = patients_db[patient_id]
+    history = patient_vitals.get(patient_id, [])
+    features = prepare_cardiac_features(patient, history)
+    factors = framingham_factors(features)
+    total = sum(item["points"] for item in factors)
+    prediction = prediction_snapshot(patient, history)
+    return {
+        "patient_id": patient_id,
+        "factors": factors,
+        "total_points": total,
+        "divisor": 45,
+        "probability": round(min(total / 45, 0.99), 3),
+        "final_class": prediction["risk_classification"],
+        "active_scoring_class": prediction["risk_classification"],
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@app.get("/api/patients/{patient_id}/summary", tags=["Patients"])
+async def patient_summary(patient_id: str):
+    if patient_id not in patients_db:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    patient = patients_db[patient_id]
+    history = patient_vitals.get(patient_id, [])
+    prediction = prediction_snapshot(patient, history)
+    if not history:
+        text = f"{patient['name']} has no recorded vital readings. Current EHR-based risk is {prediction['risk_classification']} in this synthetic demo."
+    else:
+        v = history[-1]
+        hr = f"heart rate {v.get('heart_rate_bpm', 'not recorded')} bpm"
+        bp = f"blood pressure {v.get('blood_pressure_systolic', '--')}/{v.get('blood_pressure_diastolic', '--')} mmHg"
+        spo2 = f"SpO2 {v.get('oxygen_saturation', 'not recorded')}%"
+        text = f"Latest reading for {patient['name']}: {hr}, {bp}, and {spo2}. The deterministic synthetic risk estimate is {prediction['risk_classification']} ({prediction['cardiac_event_probability'] * 100:.1f}%)."
+    return {"patient_id": patient_id, "summary": text, "latest": history[-1] if history else None, "risk_classification": prediction["risk_classification"], "timestamp": datetime.now().isoformat()}
+
+
+@app.get("/api/patients/{patient_id}/family-contact", tags=["Family"])
+async def get_family_contact(patient_id: str):
+    if patient_id not in patients_db:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    return {"patient_id": patient_id, "contact": family_contacts.get(patient_id), "notifications": family_notifications.get(patient_id, []), "flag_streak": patient_flag_streaks.get(patient_id, 0)}
+
+
+@app.post("/api/patients/{patient_id}/family-contact", tags=["Family"])
+async def save_family_contact(patient_id: str, contact: FamilyContact):
+    if patient_id not in patients_db:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    family_contacts[patient_id] = contact.model_dump()
+    family_notifications.setdefault(patient_id, [])
+    return {"patient_id": patient_id, "contact": family_contacts[patient_id], "status": "saved"}
+
+
+@app.get("/api/patients/{patient_id}/export", tags=["Patients"])
+async def export_patient(patient_id: str):
+    if patient_id not in patients_db:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    return {"patient": patients_db[patient_id], "vitals": patient_vitals.get(patient_id, []), "alerts": [a for a in alerts_db.values() if a.get("patient_id") == patient_id], "family_contact": family_contacts.get(patient_id), "family_notifications": family_notifications.get(patient_id, []), "flag_streak": patient_flag_streaks.get(patient_id, 0), "synthetic": True}
 
 
 # ==================== Cardiac Predictions ====================
@@ -622,17 +965,30 @@ async def predict_cardiac_event(patient_id: str):
 
     # Create alert if high risk
     if risk_classification in ["HIGH", "CRITICAL"]:
-        alert = {
-            "alert_id": new_alert_id(),
-            "patient_id": patient_id,
-            "severity": risk_classification,
-            "alert_type": "cardiac_event" if cardiac_prob > 0.7 else "arrhythmia" if arrhythmia_risk != "Normal sinus rhythm" else "hypertension",
-            "message": f"Cardiac risk: {risk_classification} (Event prob: {cardiac_prob*100:.1f}%, Rhythm: {arrhythmia_risk})",
-            "timestamp": datetime.now().isoformat(),
-            "acknowledged": False,
-            "vital_signs": vitals_history[-1] if vitals_history else None,
-        }
-        alerts_db[alert["alert_id"]] = alert
+        latest = vitals_history[-1] if vitals_history else None
+        reading_timestamp = latest.get("timestamp") if latest else "no-readings"
+        already_alerted = any(
+            alert.get("patient_id") == patient_id
+            and alert.get("severity") == risk_classification
+            and (
+                alert.get("prediction_reading_timestamp") == reading_timestamp
+                or (latest and (alert.get("vital_signs") or {}).get("timestamp") == reading_timestamp)
+            )
+            for alert in alerts_db.values()
+        )
+        if not already_alerted:
+            alert = {
+                "alert_id": new_alert_id(),
+                "patient_id": patient_id,
+                "severity": risk_classification,
+                "alert_type": "cardiac_event" if cardiac_prob > 0.7 else "arrhythmia" if arrhythmia_risk != "Normal sinus rhythm" else "hypertension",
+                "message": f"Cardiac risk: {risk_classification} (Event prob: {cardiac_prob*100:.1f}%, Rhythm: {arrhythmia_risk})",
+                "timestamp": datetime.now().isoformat(),
+                "acknowledged": False,
+                "vital_signs": latest,
+                "prediction_reading_timestamp": reading_timestamp,
+            }
+            alerts_db[alert["alert_id"]] = alert
 
     return CardiacPredictionResponse(
         patient_id=patient_id,
@@ -742,6 +1098,7 @@ def create_alert(patient_id: str, alert_type: str, severity: str, message: str, 
             "blood_pressure_diastolic": vitals.blood_pressure_diastolic,
             "oxygen_saturation": vitals.oxygen_saturation,
             "ecg_rhythm": vitals.ecg_rhythm,
+            "timestamp": vitals.timestamp,
         }
     }
 
@@ -788,6 +1145,84 @@ async def get_all_alerts(severity: Optional[str] = None, limit: int = Query(defa
     return sorted(alerts, key=lambda x: x["timestamp"], reverse=True)[:max(1, limit)]
 
 
+async def _simulation_loop(patient_id: str):
+    tick = 0
+    simulation_base = datetime.now()
+    try:
+        while patient_id in patients_db:
+            history = patient_vitals.get(patient_id, [])
+            latest = history[-1] if history else {}
+            spike = random.random() < 0.12
+            hr = max(55, min(100, int(latest.get("heart_rate_bpm") or 72) + random.randint(-5, 5)))
+            systolic = max(100, min(145, int(latest.get("blood_pressure_systolic") or 120) + random.randint(-6, 6)))
+            diastolic = max(60, min(95, int(latest.get("blood_pressure_diastolic") or 80) + random.randint(-4, 4)))
+            spo2 = round(max(94, min(100, float(latest.get("oxygen_saturation") or 98) + random.uniform(-1.0, 0.5))), 1)
+            if spike:
+                hr, systolic, diastolic = random.choice([(128, 182, 118), (132, 168, 104), (48, 122, 78)])
+                spo2 = 88.0 if hr > 120 else 96.0
+            vital = VitalSigns(
+                heart_rate_bpm=hr,
+                blood_pressure_systolic=systolic,
+                blood_pressure_diastolic=diastolic,
+                oxygen_saturation=spo2,
+                ecg_rhythm="Tachycardia" if hr > 120 else "Normal sinus rhythm",
+                ecg_quality="GOOD",
+                source="simulator",
+                timestamp=datetime.now().isoformat(),
+            )
+            summary_time = simulation_base + timedelta(hours=tick)
+            await _ingest_and_broadcast(patient_id, vital, summary_timestamp=summary_time.isoformat())
+            tick += 1
+            await asyncio.sleep(3)
+    except asyncio.CancelledError:
+        raise
+    finally:
+        simulator_tasks.pop(patient_id, None)
+
+
+@app.post("/api/simulate/{patient_id}/start", tags=["Simulation"])
+async def start_simulation(patient_id: str):
+    if patient_id not in patients_db:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    task = simulator_tasks.get(patient_id)
+    if task is None or task.done():
+        simulator_tasks[patient_id] = asyncio.create_task(_simulation_loop(patient_id))
+    return {"patient_id": patient_id, "status": "running", "interval_seconds": 3}
+
+
+@app.post("/api/simulate/{patient_id}/stop", tags=["Simulation"])
+async def stop_simulation(patient_id: str):
+    if patient_id not in patients_db:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    task = simulator_tasks.pop(patient_id, None)
+    if task:
+        task.cancel()
+    return {"patient_id": patient_id, "status": "stopped"}
+
+
+@app.post("/api/reset", tags=["Demo"])
+async def reset_demo_data():
+    global patient_counter
+    for task in list(simulator_tasks.values()):
+        task.cancel()
+    simulator_tasks.clear()
+    patients_db.clear()
+    alerts_db.clear()
+    patient_vitals.clear()
+    family_contacts.clear()
+    family_notifications.clear()
+    patient_flag_streaks.clear()
+    patient_flag_hour_keys.clear()
+    patient_flag_hour_status.clear()
+    websocket_clients.clear()
+    patient_counter = 0
+    seed_demo_data()
+    for patient_id in patients_db:
+        patient_flag_streaks[patient_id] = 0
+        family_notifications[patient_id] = []
+    return {"status": "reset", "patient_count": len(patients_db), "synthetic": True}
+
+
 # ==================== WebSocket ====================
 
 @app.websocket("/ws/patient/{patient_id}")
@@ -799,6 +1234,7 @@ async def websocket_endpoint(websocket: WebSocket, patient_id: str):
         return
 
     await websocket.accept()
+    websocket_clients.setdefault(patient_id, set()).add(websocket)
     logger.info(f"WebSocket connected: {patient_id}")
 
     try:
@@ -815,39 +1251,12 @@ async def websocket_endpoint(websocket: WebSocket, patient_id: str):
 
             elif message.get("type") == "vitals":
                 vitals = VitalSigns(**message.get("data", {}))
-
-                # Store vitals
-                vitals_dict = vitals.model_dump()
-                vitals_dict["timestamp"] = vitals_dict.get("timestamp") or datetime.now().isoformat()
-                vitals_dict["received_at"] = datetime.now().isoformat()
-                patient_vitals.setdefault(patient_id, []).append(vitals_dict)
-                if len(patient_vitals[patient_id]) > 1000:
-                    patient_vitals[patient_id] = patient_vitals[patient_id][-1000:]
-
-                # Check alerts
-                alerts = check_cardiac_alerts(patient_id, vitals)
-                for alert in alerts:
-                    alerts_db[alert["alert_id"]] = alert
-                    await websocket.send_json({
-                        "type": "alert",
-                        "data": alert
-                    })
-
-                # Send prediction update
-                patient = patients_db[patient_id]
-                features = prepare_cardiac_features(patient, patient_vitals[patient_id])
-                cardiac_prob = calculate_framingham_risk(features)
-
-                await websocket.send_json({
-                    "type": "prediction_update",
-                    "cardiac_event_probability": round(cardiac_prob, 3),
-                    "risk_classification": "HIGH" if cardiac_prob > 0.7 else "MODERATE" if cardiac_prob > 0.4 else "LOW",
-                    "timestamp": datetime.now().isoformat(),
-                })
+                await _ingest_and_broadcast(patient_id, vitals)
 
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
     finally:
+        websocket_clients.get(patient_id, set()).discard(websocket)
         logger.info(f"WebSocket disconnected: {patient_id}")
 
 
