@@ -24,6 +24,10 @@ The prototype demonstrates the required two-stream fusion:
 
 The backend stores demo data in memory by default. The apps display: “Synthetic demo data. Not a medical device. Not for clinical decisions.”
 
+## Demo recording
+
+The CardioTwin walkthrough recorded on 2026-10-24 is available as [an MP4 video](docs/media/CardioTwin-Demo-2026-10-24.mp4). The video is stored with Git LFS; install Git LFS and pull the LFS objects to download it with a clone.
+
 ## Repository layout
 
 ```text
@@ -35,7 +39,7 @@ backend/
   requirements.txt           Python dependencies
 web-dashboard/               Next.js doctor dashboard
 mobile-app/                  React Native / Expo patient app
-docs/                        API, deployment, and submission notes
+docs/                        API, deployment, submission notes, and demo recording
 START.bat                    Windows convenience launcher
 .env.example                Local environment template
 LICENSE                      MIT license
