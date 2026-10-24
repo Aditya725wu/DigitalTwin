@@ -26,7 +26,7 @@ The backend stores demo data in memory by default. The apps display: “Syntheti
 
 ## Demo recording
 
-The CardioTwin walkthrough recorded on 2026-10-24 is available as [an MP4 video](CardioTwin-Demo-2026-10-24.mp4) in the repository root. The video is stored with Git LFS; install Git LFS and pull the LFS objects to download it with a clone.
+The demo recording is available as a [GitHub-hosted MP4](CardioTwin-Demo-2026-10-24.mp4) stored with Git LFS. Install Git LFS and pull the LFS objects to download it with a clone. This is a GitHub file link; an Unlisted YouTube URL is not currently available.
 
 ## Repository layout
 
@@ -185,8 +185,49 @@ The backend stores demo state in memory, so seeded patients and newly submitted 
 
 ## Team and submission placeholders
 
-Before submitting, replace the placeholders in `docs/hackathon-submission.md` with the team name, college/incubator, team members, demo-video link, architecture PDF/PPT link, and presentation link.
+### Project title
 
-## License
+**CardioTwin — Proactive Cardiovascular Digital Twin**
 
-MIT — see [LICENSE](LICENSE).
+### Problem statement
+
+Cardiovascular risk information is split between historical health records and changing wearable readings. This can make it harder to review a patient's baseline alongside current vital-sign trends and follow up on emerging alerts. CardioTwin demonstrates a unified view that combines synthetic EHR data with simulated wearable telemetry and summarizes risk, trends, and alerts for a prototype workflow.
+
+### Team
+
+- **Manthan Sanap** — Team Leader
+- **Aditya Kharade** — Team Member
+- **Jay Mapari** — Team Member
+- **Aditya Patil** — Team Member
+
+Team name, institution, and public contact details are not specified in the project materials.
+
+### Technical stack
+
+| Area | Technologies |
+|---|---|
+| Backend API | Python, FastAPI, Pydantic, Uvicorn |
+| Data and numeric processing | NumPy, pandas; synthetic EHR and wearable readings |
+| Doctor dashboard | Next.js 14, React 18, TypeScript, Tailwind CSS, Recharts, Zustand |
+| Patient mobile app | React Native 0.72, Expo SDK 49 |
+| App communication | REST/JSON and WebSockets |
+| Demo state | In-memory backend data; it resets when the API process restarts |
+
+### AI/ML model and framework details
+
+- **Live API behavior:** the running backend calculates a simplified Framingham-inspired score and uses rule-based thresholds for risk categories, vital-sign alerts, and blood-pressure trends.
+- **Optional training utilities:** `backend/heart_disease_models.py` includes a synthetic-data training workflow with scikit-learn's `GradientBoostingClassifier`, `StandardScaler`, and an experimental `RandomForestClassifier` helper. These utilities are separate from the live API prediction path.
+- **Arrhythmia demo:** ECG handling uses simplified placeholder logic; it is not a deployed or clinically validated CNN.
+- These components are proof-of-concept only. They use synthetic demo data and are not intended for diagnosis, treatment, or clinical decisions.
+
+### Demo, architecture, and presentation
+
+- **Demo MP4:** [CardioTwin-Demo-2026-10-24.mp4](CardioTwin-Demo-2026-10-24.mp4) (Git LFS). The file is hosted in this public repository. An Unlisted YouTube URL is still needed if the submission specifically requires YouTube.
+- **Architecture diagram:** [PDF](output/pdf/CardioTwin_Architecture.pdf)
+- **Project presentation:** [PowerPoint](output/pptx/CardioTwin_Project_Deck_EndSlideAndBackground_NoTemplateText.pptx)
+
+The repository is public, so the linked repository files can be accessed without additional repository permissions. The demo file uses Git LFS; clone users need Git LFS installed and must pull the LFS objects.
+
+## Open-source license
+
+This project is released under the **MIT License**. See [LICENSE](LICENSE).
