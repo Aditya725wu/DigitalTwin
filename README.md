@@ -26,7 +26,7 @@ The backend stores demo data in memory by default. The apps display: “Syntheti
 
 ## Demo recording
 
-The CardioTwin walkthrough recorded on 2026-10-24 is available as [an MP4 video](docs/media/CardioTwin-Demo-2026-10-24.mp4). The video is stored with Git LFS; install Git LFS and pull the LFS objects to download it with a clone.
+The CardioTwin walkthrough recorded on 2026-10-24 is available as [an MP4 video](CardioTwin-Demo-2026-10-24.mp4) in the repository root. The video is stored with Git LFS; install Git LFS and pull the LFS objects to download it with a clone.
 
 ## Repository layout
 
@@ -39,7 +39,8 @@ backend/
   requirements.txt           Python dependencies
 web-dashboard/               Next.js doctor dashboard
 mobile-app/                  React Native / Expo patient app
-docs/                        API, deployment, submission notes, and demo recording
+docs/                        API, deployment, and submission notes
+CardioTwin-Demo-2026-10-24.mp4  Root-level project demo recording (Git LFS)
 START.bat                    Windows convenience launcher
 .env.example                Local environment template
 LICENSE                      MIT license
