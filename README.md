@@ -15,14 +15,14 @@ The prototype demonstrates the required two-stream fusion:
 
 ## What works
 
-- FastAPI backend with seeded synthetic cardiac patients
-- Cardiac prediction endpoint with risk classification
-- Arrhythmia and blood-pressure checks
-- Alert generation and acknowledgement
-- WebSocket endpoint for patient telemetry
-- Next.js doctor dashboard with live API data, charts, risk mix, prediction watchlist, and alert queue
-- Expo mobile app screens for cardiac status, telemetry, alerts, and profile
+- FastAPI backend with editable synthetic patient EHRs, validated vitals, deterministic risk explanations and summaries, baseline deviation, JSON export, and reset
+- Alert generation, acknowledgement, three-strike flag tracking, and clearly labelled simulated family-notification logs
+- Three-second synthetic live simulator with WebSocket vital, alert, and prediction updates
+- Next.js doctor dashboard with patient search/filter/sort, add/edit/delete, vital entry, what-if scenarios, risk breakdowns, family contacts, trend charts, timeline replay, JSON export, and print view
+- Expo SDK 49 patient app with patient selection, live shared patient data, vital entry, alert acknowledgement, EHR/family editing, local medication and appointment reminders, dark mode, language switch, and emergency card
 - Swagger / OpenAPI documentation at `/docs`
+
+The backend stores demo data in memory by default. The apps display: “Synthetic demo data. Not a medical device. Not for clinical decisions.”
 
 ## Repository layout
 
@@ -51,24 +51,24 @@ LICENSE                      MIT license
 
 ### Windows
 
-Run the following from the repository root (`D:\Digital Twin`):
+Run the following from the repository root (`D:\DigitalTwin\DigitalTwin`):
 
 ```bat
-cd /d "D:\Digital Twin\backend"
+cd /d "D:\DigitalTwin\DigitalTwin\backend"
 python -m venv venv
 call venv\Scripts\activate.bat
 pip install -r requirements.txt
 
-cd /d "D:\Digital Twin\web-dashboard"
+cd /d "D:\DigitalTwin\DigitalTwin\web-dashboard"
 npm install
 ```
 
-Then start two terminals.
+Then start three terminals.
 
 **Terminal 1 — backend**
 
 ```bat
-cd /d "D:\Digital Twin\backend"
+cd /d "D:\DigitalTwin\DigitalTwin\backend"
 call venv\Scripts\activate.bat
 uvicorn main:app --reload --port 8000
 ```
@@ -76,8 +76,15 @@ uvicorn main:app --reload --port 8000
 **Terminal 2 — web dashboard**
 
 ```bat
-cd /d "D:\Digital Twin\web-dashboard"
+cd /d "D:\DigitalTwin\DigitalTwin\web-dashboard"
 npm run dev
+```
+
+**Terminal 3 — Expo app**
+
+```bat
+cd /d "D:\DigitalTwin\DigitalTwin\mobile-app"
+npx expo start
 ```
 
 Open:
@@ -86,7 +93,9 @@ Open:
 - API docs: http://localhost:8000/docs
 - Health check: http://localhost:8000/health
 
-Alternatively, after installing dependencies, double-click `START.bat`.
+Set `NEXT_PUBLIC_API_URL=http://localhost:8000` for the web dashboard and `EXPO_PUBLIC_API_URL=http://localhost:8000` for a local mobile emulator. For a physical phone, use the computer's LAN address for the Expo variable, e.g. `http://192.168.1.20:8000`. The API CORS policy permits localhost and private LAN origins. Expo remains on SDK 49.
+
+Alternatively, after installing dependencies, double-click `START.bat` to launch the backend and web dashboard.
 
 ### macOS / Linux
 
@@ -113,6 +122,8 @@ npm install
 npx expo start
 ```
 
+AsyncStorage is pinned to the SDK 49 compatible version by `npx expo install @react-native-async-storage/async-storage`. The Android application ID is `com.aditya.cardiotwin`.
+
 For a physical phone, set `EXPO_PUBLIC_API_URL` to the host computer's LAN IP, for example `http://192.168.1.20:8000`, and ensure the phone and computer are on the same network.
 
 ## Demo flow for judges
@@ -123,9 +134,9 @@ For a physical phone, set `EXPO_PUBLIC_API_URL` to the host computer's LAN IP, f
 4. Show live wearable vitals and the heart-rate / blood-pressure chart.
 5. Open the prediction watchlist and compare LOW, MODERATE, HIGH, and CRITICAL profiles.
 6. Open the alert queue and acknowledge one alert.
-7. Submit a new vital reading through Swagger: `POST /api/patients/{patient_id}/vitals`.
-8. Refresh the dashboard and show the new telemetry / alert state.
-9. Open the mobile app to show the patient-facing view.
+7. Add a patient and submit a vital reading from the dashboard or Swagger. HR `128`, BP `182/118`, and SpO2 `92` generates a CRITICAL BP alert.
+8. Open the factor explanation, run a what-if, start live monitoring, and acknowledge the alert.
+9. Select that same patient in the mobile app; the shared patient API and WebSocket update its vitals and alert feed.
 
 Example vital payload:
 
@@ -150,7 +161,13 @@ python -m py_compile backend/main.py backend/heart_disease_models.py backend/gen
 # Web production build
 cd web-dashboard
 npm run build
+
+# Expo SDK 49 bundle check
+cd ../mobile-app
+npx expo export --platform android --output-dir dist
 ```
+
+Demo notice: Synthetic demo data. Not a medical device. Not for clinical decisions.
 
 The backend stores demo state in memory, so seeded patients and newly submitted readings reset when the API process restarts.
 

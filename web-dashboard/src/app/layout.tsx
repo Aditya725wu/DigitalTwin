@@ -15,6 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-gray-50">
+        <div className="bg-slate-900 px-4 py-2 text-center text-xs font-medium text-slate-100">Synthetic demo data. Not a medical device. Not for clinical decisions.</div>
         {children}
         <ToastProvider />
       </body>

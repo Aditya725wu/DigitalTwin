@@ -9,6 +9,7 @@ ENV/
 *.egg-info/
 build/
 dist/
+web-build/
 
 # Node / Expo
 node_modules/
